@@ -60,6 +60,11 @@ export default function StatsPage() {
       fetch("/api/stats").then((r) => r.json()),
     ])
       .then(([detailedData, statsData]) => {
+        console.log('Detailed data received:', detailedData);
+        console.log('Stats data received:', statsData);
+        console.log('Reviews:', detailedData.reviews);
+        console.log('Cards:', statsData.cards);
+
         // detailedData contains reviews array
         setReviews(detailedData.reviews || []);
         setCards(statsData.cards || []);
@@ -85,8 +90,27 @@ export default function StatsPage() {
   today.setHours(0, 0, 0, 0);
   const todayTimestamp = today.getTime();
 
+  console.log('Calculating stats:', {
+    now,
+    todayTimestamp,
+    reviewsCount: reviews.length,
+    cardsCount: cards.length,
+  });
+
   // Today's reviews
-  const todayReviews = reviews.filter((r) => r.createdAt >= todayTimestamp);
+  const todayReviews = reviews.filter((r) => {
+    const createdAt = typeof r.createdAt === 'number' ? r.createdAt : new Date(r.createdAt).getTime();
+    console.log('Review:', {
+      id: r.id,
+      createdAt,
+      todayTimestamp,
+      isToday: createdAt >= todayTimestamp,
+    });
+    return createdAt >= todayTimestamp;
+  });
+
+  console.log('Today reviews:', todayReviews.length);
+
   const againCount = todayReviews.filter((r) => r.rating === 1).length;
   const correctPercentage =
     todayReviews.length > 0
