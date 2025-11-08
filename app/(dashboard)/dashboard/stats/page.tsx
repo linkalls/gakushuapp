@@ -31,11 +31,11 @@ ChartJS.register(
 
 interface ReviewLog {
   id: string;
-  card_id: string;
+  cardId: string;
   rating: number;
-  review_time: number;
-  state: number;
-  created_at: number;
+  reviewTime: number;
+  state?: number;
+  createdAt: number;
 }
 
 interface Card {
@@ -86,7 +86,7 @@ export default function StatsPage() {
   const todayTimestamp = today.getTime();
 
   // Today's reviews
-  const todayReviews = reviews.filter((r) => r.created_at >= todayTimestamp);
+  const todayReviews = reviews.filter((r) => r.createdAt >= todayTimestamp);
   const againCount = todayReviews.filter((r) => r.rating === 1).length;
   const correctPercentage =
     todayReviews.length > 0
@@ -95,7 +95,7 @@ export default function StatsPage() {
       )
       : 0;
 
-  // Reviews by type
+  // Reviews by type (state might be undefined for old reviews)
   const learnReviews = todayReviews.filter((r) => r.state === 1).length;
   const reviewReviews = todayReviews.filter((r) => r.state === 2).length;
   const relearnReviews = todayReviews.filter((r) => r.state === 3).length;
@@ -103,12 +103,17 @@ export default function StatsPage() {
   // Card counts by state
   const newCards = cards.filter((c) => c.state === 0).length;
   const learningCards = cards.filter((c) => c.state === 1).length;
-  const youngCards = cards.filter(
-    (c) => c.state === 2 && c.stability < 21
+
+  // For young/mature cards, handle stability=0 cases
+  const reviewStateCards = cards.filter((c) => c.state === 2);
+  const youngCards = reviewStateCards.filter(
+    (c) => c.stability > 0 && c.stability < 21
   ).length;
-  const matureCards = cards.filter(
-    (c) => c.state === 2 && c.stability >= 21
+  const matureCards = reviewStateCards.filter(
+    (c) => c.stability >= 21
   ).length;
+  // Cards with stability=0 in review state (shouldn't happen but handle gracefully)
+  const unstableReviewCards = reviewStateCards.filter((c) => c.stability === 0).length;
 
   // Reviews over last 30 days
   const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
@@ -120,9 +125,9 @@ export default function StatsPage() {
   }
 
   reviews
-    .filter((r) => r.created_at >= thirtyDaysAgo)
+    .filter((r) => r.createdAt >= thirtyDaysAgo)
     .forEach((r) => {
-      const date = new Date(r.created_at).toISOString().split("T")[0];
+      const date = new Date(r.createdAt).toISOString().split("T")[0];
       if (last30Days[date] !== undefined) {
         last30Days[date]++;
       }
@@ -147,22 +152,42 @@ export default function StatsPage() {
 
   // Card states pie chart
   const cardStateData = {
-    labels: ["新規", "学習中", "若い", "成熟"],
+    labels: unstableReviewCards > 0
+      ? ["新規", "学習中", "若い", "成熟", "不安定"]
+      : ["新規", "学習中", "若い", "成熟"],
     datasets: [
       {
-        data: [newCards, learningCards, youngCards, matureCards],
-        backgroundColor: [
-          "rgba(59, 130, 246, 0.8)", // Blue - New
-          "rgba(239, 68, 68, 0.8)", // Red - Learning
-          "rgba(34, 197, 94, 0.8)", // Green - Young
-          "rgba(99, 102, 241, 0.8)", // Indigo - Mature
-        ],
-        borderColor: [
-          "rgba(59, 130, 246, 1)",
-          "rgba(239, 68, 68, 1)",
-          "rgba(34, 197, 94, 1)",
-          "rgba(99, 102, 241, 1)",
-        ],
+        data: unstableReviewCards > 0
+          ? [newCards, learningCards, youngCards, matureCards, unstableReviewCards]
+          : [newCards, learningCards, youngCards, matureCards],
+        backgroundColor: unstableReviewCards > 0
+          ? [
+            "rgba(59, 130, 246, 0.8)", // Blue - New
+            "rgba(239, 68, 68, 0.8)", // Red - Learning
+            "rgba(34, 197, 94, 0.8)", // Green - Young
+            "rgba(99, 102, 241, 0.8)", // Indigo - Mature
+            "rgba(161, 161, 170, 0.8)", // Gray - Unstable
+          ]
+          : [
+            "rgba(59, 130, 246, 0.8)", // Blue - New
+            "rgba(239, 68, 68, 0.8)", // Red - Learning
+            "rgba(34, 197, 94, 0.8)", // Green - Young
+            "rgba(99, 102, 241, 0.8)", // Indigo - Mature
+          ],
+        borderColor: unstableReviewCards > 0
+          ? [
+            "rgba(59, 130, 246, 1)",
+            "rgba(239, 68, 68, 1)",
+            "rgba(34, 197, 94, 1)",
+            "rgba(99, 102, 241, 1)",
+            "rgba(161, 161, 170, 1)",
+          ]
+          : [
+            "rgba(59, 130, 246, 1)",
+            "rgba(239, 68, 68, 1)",
+            "rgba(34, 197, 94, 1)",
+            "rgba(99, 102, 241, 1)",
+          ],
         borderWidth: 2,
       },
     ],
@@ -171,7 +196,7 @@ export default function StatsPage() {
   // Answer buttons distribution (last 30 days)
   const buttonCounts = { again: 0, hard: 0, good: 0, easy: 0 };
   reviews
-    .filter((r) => r.created_at >= thirtyDaysAgo)
+    .filter((r) => r.createdAt >= thirtyDaysAgo)
     .forEach((r) => {
       switch (r.rating) {
         case 1:
@@ -220,10 +245,27 @@ export default function StatsPage() {
   }
 
   cards.forEach((c) => {
-    if (c.state === 0) return; // Skip new cards
+    // Skip new cards
+    if (c.state === 0) return;
+
     // Validate due date before processing
-    if (!c.due || isNaN(c.due)) return;
-    const dueDate = new Date(c.due).toISOString().split("T")[0];
+    if (!c.due || isNaN(c.due) || c.due === null || c.due === undefined) {
+      console.warn(`Card ${c.id} has invalid due date:`, c.due);
+      return;
+    }
+
+    // Check if due is a reasonable timestamp (not too far in past/future)
+    const dueTime = typeof c.due === 'number' ? c.due : new Date(c.due).getTime();
+    if (isNaN(dueTime)) {
+      console.warn(`Card ${c.id} has unparseable due date:`, c.due);
+      return;
+    }
+
+    // Only include cards due within the forecast window
+    const endOfForecast = now + forecastDays * 24 * 60 * 60 * 1000;
+    if (dueTime < now || dueTime > endOfForecast) return;
+
+    const dueDate = new Date(dueTime).toISOString().split("T")[0];
     if (forecast[dueDate] !== undefined) {
       forecast[dueDate]++;
     }
@@ -393,6 +435,16 @@ export default function StatsPage() {
                 {matureCards}
               </span>
             </div>
+            {unstableReviewCards > 0 && (
+              <div className="flex items-center justify-between p-4 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800">
+                <span className="text-amber-700 dark:text-amber-300">
+                  不安定 (要修正)
+                </span>
+                <span className="text-2xl font-bold text-amber-900 dark:text-amber-100">
+                  {unstableReviewCards}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </div>
