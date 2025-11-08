@@ -8,9 +8,37 @@ const fsrs = new FSRS({});
  * Convert database card to FSRS card
  */
 export function dbCardToFSRS(dbCard: DBCard): Card {
+  const dueDate = new Date(dbCard.due);
+
+  // IMPORTANT: FSRS requires non-zero stability for existing cards
+  // If stability is 0 but the card has been reviewed (reps > 0),
+  // we need to calculate a reasonable initial stability
+  let stability = dbCard.stability;
+  if (stability === 0 && dbCard.reps > 0) {
+    // Estimate stability based on scheduled_days
+    // For reviewed cards, use scheduled_days as a baseline
+    stability = Math.max(0.1, dbCard.scheduledDays || 1);
+    console.warn(
+      `Card ${dbCard.id} has stability=0 with reps=${dbCard.reps}. Setting stability to ${stability}`
+    );
+  } else if (stability === 0) {
+    // For truly new cards, use minimal stability
+    stability = 0.1;
+  }
+
+  console.log("dbCardToFSRS:", {
+    inputDue: dbCard.due,
+    dueDate: dueDate,
+    dueDateIsValid: !isNaN(dueDate.getTime()),
+    originalStability: dbCard.stability,
+    adjustedStability: stability,
+    difficulty: dbCard.difficulty,
+    reps: dbCard.reps,
+  });
+
   return {
-    due: new Date(dbCard.due),
-    stability: dbCard.stability,
+    due: dueDate,
+    stability: stability,
     difficulty: dbCard.difficulty,
     elapsed_days: dbCard.elapsedDays,
     scheduled_days: dbCard.scheduledDays,
@@ -26,13 +54,21 @@ export function dbCardToFSRS(dbCard: DBCard): Card {
  * Convert FSRS card to database card fields
  */
 export function fsrsCardToDB(fsrsCard: Card): Partial<DBCard> {
+  const due =
+    fsrsCard.due instanceof Date
+      ? fsrsCard.due.getTime()
+      : Number(fsrsCard.due);
+
+  console.log("fsrsCardToDB:", {
+    inputDue: fsrsCard.due,
+    outputDue: due,
+    outputDueIsNaN: Number.isNaN(due),
+    stability: fsrsCard.stability,
+    difficulty: fsrsCard.difficulty,
+  });
+
   return {
-    // fsrsCard.due can be a Date or a numeric timestamp depending on ts-fsrs version/runtime.
-    // Coerce safely to a number to avoid "value.getTime is not a function" errors.
-    due:
-      fsrsCard.due instanceof Date
-        ? fsrsCard.due.getTime()
-        : Number(fsrsCard.due),
+    due,
     stability: fsrsCard.stability,
     difficulty: fsrsCard.difficulty,
     elapsedDays: fsrsCard.elapsed_days,
@@ -56,12 +92,23 @@ export function reviewCard(
   rating: Rating,
   reviewTime: Date = new Date()
 ): { card: Partial<DBCard>; log: any } {
+  console.log("reviewCard called with:", {
+    cardId: dbCard.id,
+    rating,
+    reviewTime,
+  });
+
   const fsrsCard = dbCardToFSRS(dbCard);
+  console.log("FSRS card created:", fsrsCard);
+
   const schedulingCards = fsrs.repeat(fsrsCard, reviewTime);
+  console.log("Scheduling cards:", schedulingCards);
 
   // Get the card based on rating (excluding Manual rating)
   const gradeRating = rating as Grade;
   const result = schedulingCards[gradeRating];
+
+  console.log("Selected result for rating", gradeRating, ":", result);
 
   return {
     card: fsrsCardToDB(result.card),

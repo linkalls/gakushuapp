@@ -87,7 +87,7 @@ export default function StudyPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          card_id: currentCard.id,
+          cardId: currentCard.id,
           rating,
         }),
       });

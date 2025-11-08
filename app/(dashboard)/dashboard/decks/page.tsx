@@ -35,10 +35,42 @@ export default function DecksPage() {
   const [showNewDeckForm, setShowNewDeckForm] = useState(false);
   const [newDeck, setNewDeck] = useState({ name: "", description: "", parent_id: "" });
   const [expandedDecks, setExpandedDecks] = useState<Set<string>>(new Set());
+  const [studyTime, setStudyTime] = useState(0); // 今日の学習時間（秒）
 
   useEffect(() => {
     fetchDecks();
+    loadStudyTime();
+
+    // 1秒ごとに学習時間を更新（学習中の場合）
+    const interval = setInterval(() => {
+      const studyingKey = localStorage.getItem('studying');
+      if (studyingKey) {
+        setStudyTime(prev => prev + 1);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
   }, []);
+
+  const loadStudyTime = () => {
+    const today = new Date().toDateString();
+    const savedDate = localStorage.getItem('studyDate');
+    const savedTime = localStorage.getItem('studyTime');
+
+    if (savedDate === today && savedTime) {
+      setStudyTime(parseInt(savedTime));
+    } else {
+      setStudyTime(0);
+      localStorage.setItem('studyDate', today);
+      localStorage.setItem('studyTime', '0');
+    }
+  };
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
 
   const fetchDecks = async () => {
     try {
@@ -196,7 +228,7 @@ export default function DecksPage() {
                     {deck.name}
                   </h3>
                   <p className="text-xs text-zinc-500 dark:text-zinc-500 mt-1">
-                    {deck.deck_path}
+                    {deck.deckPath}
                   </p>
                 </div>
                 <button
@@ -311,7 +343,7 @@ export default function DecksPage() {
           {newDeck.parent_id && (
             <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
               <p className="text-sm text-blue-900 dark:text-blue-200">
-                親デッキ: {decks.find((d) => d.id === newDeck.parent_id)?.deck_path}
+                親デッキ: {decks.find((d) => d.id === newDeck.parent_id)?.deckPath}
               </p>
             </div>
           )}

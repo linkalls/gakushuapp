@@ -29,4 +29,4 @@ EXPOSE 3000
 # The command to start the Next.js development server using Bun.
 # The user mentioned `bun --bun`, which is for running the dev server.
 # `bun run dev` will execute the "dev" script from package.json.
-CMD ["bun", "run", "dev"]
+CMD ["bun", "start"]

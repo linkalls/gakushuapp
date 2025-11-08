@@ -3,269 +3,29 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-interface Deck {
-  id: string;
-  name: string;
-  description: string | null;
-  userId: string;
-  parentId: string | null;
-  deckPath: string;
-  createdAt: number | Date;
-  updatedAt: number | Date;
-}
-
-interface DeckStats {
+interface Stats {
+  totalDecks: number;
   totalCards: number;
-  newCards: number;
-  learningCards: number;
   dueCards: number;
-  progress: number;
+  reviewsToday: number;
 }
 
-interface DeckWithStats extends Deck {
-  stats?: DeckStats;
-  children?: DeckWithStats[];
-  level: number;
-}
-
-export default function DecksPage() {
-  const [decks, setDecks] = useState<Deck[]>([]);
-  const [deckStats, setDeckStats] = useState<Map<string, DeckStats>>(new Map());
+export default function DashboardPage() {
+  const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showNewDeckForm, setShowNewDeckForm] = useState(false);
-  const [newDeck, setNewDeck] = useState({ name: "", description: "", parent_id: "" });
-  const [expandedDecks, setExpandedDecks] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    fetchDecks();
+    fetch("/api/stats")
+      .then((res) => res.json())
+      .then((data) => {
+        setStats(data);
+        setLoading(false);
+      })
+      .catch((error) => {
+        console.error("Failed to fetch stats:", error);
+        setLoading(false);
+      });
   }, []);
-
-  const fetchDecks = async () => {
-    try {
-      // 一度のAPIコールでstatsも含めて取得
-      const res = await fetch("/api/decks?includeStats=true");
-      const data = await res.json();
-      setDecks(data);
-
-      // statsを個別に抽出
-      const statsMap = new Map<string, DeckStats>();
-      data.forEach((deck: any) => {
-        if (deck.stats) {
-          statsMap.set(deck.id, deck.stats);
-        }
-      });
-      setDeckStats(statsMap);
-
-      setLoading(false);
-    } catch (error) {
-      console.error("Failed to fetch decks:", error);
-      setLoading(false);
-    }
-  };
-
-  const fetchDeckStats = async (deckId: string) => {
-    // サブデッキボタン押下時のみ呼び出し
-    try {
-      const res = await fetch(`/api/decks/${deckId}/stats`);
-      const stats = await res.json();
-      setDeckStats((prev) => new Map(prev).set(deckId, stats));
-    } catch (error) {
-      console.error(`Failed to fetch stats for deck ${deckId}:`, error);
-    }
-  };
-
-  const buildDeckTree = (decks: Deck[]): DeckWithStats[] => {
-    const deckMap = new Map<string, DeckWithStats>();
-    const rootDecks: DeckWithStats[] = [];
-
-    // Create deck objects with level
-    decks.forEach((deck) => {
-      const level = deck.deckPath.split("::").length - 1;
-      deckMap.set(deck.id, {
-        ...deck,
-        stats: deckStats.get(deck.id),
-        children: [],
-        level,
-      });
-    });
-
-    // Build tree structure
-    decks.forEach((deck) => {
-      const deckWithStats = deckMap.get(deck.id)!;
-      if (deck.parentId) {
-        const parent = deckMap.get(deck.parentId);
-        if (parent) {
-          parent.children!.push(deckWithStats);
-        } else {
-          rootDecks.push(deckWithStats);
-        }
-      } else {
-        rootDecks.push(deckWithStats);
-      }
-    });
-
-    // Sort by name
-    const sortDecks = (decks: DeckWithStats[]) => {
-      decks.sort((a, b) => a.name.localeCompare(b.name));
-      decks.forEach((deck) => {
-        if (deck.children && deck.children.length > 0) {
-          sortDecks(deck.children);
-        }
-      });
-    };
-
-    sortDecks(rootDecks);
-    return rootDecks;
-  };
-
-  const createDeck = async () => {
-    if (!newDeck.name.trim()) return;
-
-    try {
-      const res = await fetch("/api/decks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: newDeck.name,
-          description: newDeck.description || null,
-          parent_id: newDeck.parent_id || null,
-        }),
-      });
-
-      if (res.ok) {
-        setNewDeck({ name: "", description: "", parent_id: "" });
-        setShowNewDeckForm(false);
-        fetchDecks();
-      }
-    } catch (error) {
-      console.error("Failed to create deck:", error);
-    }
-  };
-
-  const deleteDeck = async (id: string) => {
-    if (!confirm("このデッキと全てのサブデッキ・カードを削除してもよろしいですか?")) return;
-
-    try {
-      const res = await fetch(`/api/decks/${id}`, { method: "DELETE" });
-      if (res.ok) {
-        fetchDecks();
-      }
-    } catch (error) {
-      console.error("Failed to delete deck:", error);
-    }
-  };
-
-  const toggleExpand = (deckId: string) => {
-    setExpandedDecks((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(deckId)) {
-        newSet.delete(deckId);
-      } else {
-        newSet.add(deckId);
-      }
-      return newSet;
-    });
-  };
-
-  const renderDeck = (deck: DeckWithStats) => {
-    const hasChildren = deck.children && deck.children.length > 0;
-    const isExpanded = expandedDecks.has(deck.id);
-    const stats = deck.stats;
-
-    return (
-      <div key={deck.id} className="mb-2">
-        <div
-          className={`bg-white dark:bg-zinc-900 rounded-2xl overflow-hidden shadow-sm border transition-all ${
-            hasChildren ? "border-zinc-300 dark:border-zinc-700" : "border-zinc-200 dark:border-zinc-800"
-          }`}
-        >
-          <div className="flex gap-3 p-6">
-            {hasChildren && (
-              <button
-                onClick={() => toggleExpand(deck.id)}
-                className="w-6 h-6 flex items-center justify-center text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-transform shrink-0 mt-1"
-                style={{ transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)" }}
-              >
-                ▶
-              </button>
-            )}
-            {!hasChildren && <div className="w-6" />}
-
-            <div className="flex-1">
-              <div className="flex items-start justify-between mb-2">
-                <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
-                    {deck.name}
-                  </h3>
-                  <p className="text-xs text-zinc-500 dark:text-zinc-500 mt-1">
-                    {deck.deckPath}
-                  </p>
-                </div>
-
-              {deck.description && (
-                <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-3">
-                  {deck.description}
-                </p>
-              )}
-
-              {stats && (
-                <div className="space-y-2">
-                  <div className="flex items-center gap-4 text-sm">
-                    <span className="text-zinc-600 dark:text-zinc-400">
-                      全体: <span className="font-mono font-semibold text-zinc-900 dark:text-zinc-100">{stats.totalCards}</span>
-                    </span>
-                    <span className="text-blue-600 dark:text-blue-400">
-                      新規: <span className="font-mono font-semibold">{stats.newCards}</span>
-                    </span>
-                    <span className="text-yellow-600 dark:text-yellow-400">
-                      学習中: <span className="font-mono font-semibold">{stats.learningCards}</span>
-                    </span>
-                    <span className="text-red-600 dark:text-red-400">
-                      復習: <span className="font-mono font-semibold">{stats.dueCards}</span>
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 h-2 bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-linear-to-r from-blue-500 to-green-500"
-                        style={{ width: `${stats.progress}%` }}
-                      />
-                    </div>
-                    <span className="text-sm font-mono font-semibold text-zinc-900 dark:text-zinc-100">
-                      {stats.progress}%
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              <div className="flex gap-2 mt-3">
-                <Link
-                  href={`/dashboard/decks/${deck.id}`}
-                  className="flex-1 px-3 py-2 bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 rounded-lg text-center font-medium hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors text-sm"
-                >
-                  カードを見る
-                </Link>
-                <Link
-                  href={`/dashboard/study?deck=${deck.id}`}
-                  className="flex-1 px-3 py-2 bg-zinc-900 dark:bg-zinc-100 text-zinc-50 dark:text-zinc-900 rounded-lg text-center font-medium hover:scale-105 transition-transform text-sm"
-                >
-                  学習開始
-                </Link>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {hasChildren && isExpanded && (
-          <div className="ml-8 mt-2 space-y-2 border-l-2 border-zinc-200 dark:border-zinc-800 pl-4">
-            {deck.children!.map((child) => renderDeck(child))}
-          </div>
-        )}
-      </div>
-      </div>
-    );
-  }
 
   if (loading) {
     return (
@@ -275,109 +35,135 @@ export default function DecksPage() {
     );
   }
 
-  const deckTree = buildDeckTree(decks);
-
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-100">
-            デッキ
-          </h1>
-          <p className="text-zinc-600 dark:text-zinc-400 mt-2">
-            学習デッキを管理しましょう
-          </p>
-        </div>
-        <button
-          onClick={() => {
-            setShowNewDeckForm(!showNewDeckForm);
-            setNewDeck({ name: "", description: "", parent_id: "" });
-          }}
-          className="px-6 py-3 bg-zinc-900 dark:bg-zinc-100 text-zinc-50 dark:text-zinc-900 rounded-xl font-medium hover:scale-105 transition-transform"
-        >
-          ➕ 新しいデッキ
-        </button>
+      <div>
+        <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-100">
+          ダッシュボード
+        </h1>
+        <p className="text-zinc-600 dark:text-zinc-400 mt-2">
+          学習の進捗を確認しましょう
+        </p>
       </div>
 
-      {showNewDeckForm && (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="bg-white dark:bg-zinc-900 rounded-2xl p-6 shadow-sm border border-zinc-200 dark:border-zinc-800">
-          <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100 mb-4">
-            {newDeck.parent_id ? "サブデッキを作成" : "新しいデッキを作成"}
-          </h2>
-          {newDeck.parent_id && (
-            <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-              <p className="text-sm text-blue-900 dark:text-blue-200">
-                親デッキ: {decks.find((d) => d.id === newDeck.parent_id)?.deckPath}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-zinc-600 dark:text-zinc-400">
+                デッキ数
+              </p>
+              <p className="text-3xl font-bold text-zinc-900 dark:text-zinc-100 mt-2">
+                {stats?.totalDecks || 0}
               </p>
             </div>
-          )}
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">
-                デッキ名
-              </label>
-              <input
-                type="text"
-                value={newDeck.name}
-                onChange={(e) => setNewDeck({ ...newDeck, name: e.target.value })}
-                className="w-full px-4 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 focus:ring-2 focus:ring-zinc-900 dark:focus:ring-zinc-100 outline-none"
-                placeholder="例: 02中世"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">
-                説明 (オプション)
-              </label>
-              <textarea
-                value={newDeck.description}
-                onChange={(e) => setNewDeck({ ...newDeck, description: e.target.value })}
-                className="w-full px-4 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 focus:ring-2 focus:ring-zinc-900 dark:focus:ring-zinc-100 outline-none"
-                rows={3}
-                placeholder="デッキの説明を入力"
-              />
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={createDeck}
-                className="px-6 py-2 bg-zinc-900 dark:bg-zinc-100 text-zinc-50 dark:text-zinc-900 rounded-lg font-medium hover:scale-105 transition-transform"
-              >
-                作成
-              </button>
-              <button
-                onClick={() => {
-                  setShowNewDeckForm(false);
-                  setNewDeck({ name: "", description: "", parent_id: "" });
-                }}
-                className="px-6 py-2 bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 rounded-lg font-medium hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
-              >
-                キャンセル
-              </button>
-            </div>
+            <div className="text-4xl">📚</div>
           </div>
         </div>
-      )}
 
-      {deckTree.length === 0 ? (
-        <div className="bg-white dark:bg-zinc-900 rounded-2xl p-12 text-center shadow-sm border border-zinc-200 dark:border-zinc-800">
-          <div className="text-6xl mb-4">📚</div>
-          <h3 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100 mb-2">
-            デッキがありません
-          </h3>
-          <p className="text-zinc-600 dark:text-zinc-400 mb-6">
-            最初のデッキを作成して学習を始めましょう
-          </p>
-          <button
-            onClick={() => setShowNewDeckForm(true)}
-            className="px-6 py-3 bg-zinc-900 dark:bg-zinc-100 text-zinc-50 dark:text-zinc-900 rounded-xl font-medium hover:scale-105 transition-transform"
-          >
-            デッキを作成
-          </button>
+        <div className="bg-white dark:bg-zinc-900 rounded-2xl p-6 shadow-sm border border-zinc-200 dark:border-zinc-800">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-zinc-600 dark:text-zinc-400">
+                総カード数
+              </p>
+              <p className="text-3xl font-bold text-zinc-900 dark:text-zinc-100 mt-2">
+                {stats?.totalCards || 0}
+              </p>
+            </div>
+            <div className="text-4xl">🃏</div>
+          </div>
         </div>
-      ) : (
-        <div className="space-y-2">
-          {deckTree.map((deck) => renderDeck(deck))}
+
+        <div className="bg-white dark:bg-zinc-900 rounded-2xl p-6 shadow-sm border border-zinc-200 dark:border-zinc-800">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-zinc-600 dark:text-zinc-400">
+                復習予定
+              </p>
+              <p className="text-3xl font-bold text-blue-600 dark:text-blue-400 mt-2">
+                {stats?.dueCards || 0}
+              </p>
+            </div>
+            <div className="text-4xl">⏰</div>
+          </div>
         </div>
-      )}
+
+        <div className="bg-white dark:bg-zinc-900 rounded-2xl p-6 shadow-sm border border-zinc-200 dark:border-zinc-800">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-zinc-600 dark:text-zinc-400">
+                今日の復習
+              </p>
+              <p className="text-3xl font-bold text-green-600 dark:text-green-400 mt-2">
+                {stats?.reviewsToday || 0}
+              </p>
+            </div>
+            <div className="text-4xl">✅</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white dark:bg-zinc-900 rounded-2xl p-8 shadow-sm border border-zinc-200 dark:border-zinc-800">
+          <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100 mb-4">
+            クイックアクション
+          </h2>
+          <div className="space-y-3">
+            <Link
+              href="/dashboard/study"
+              className="flex items-center justify-between p-4 rounded-xl bg-zinc-50 dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors group"
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">📖</span>
+                <span className="font-medium text-zinc-900 dark:text-zinc-100">
+                  学習を開始
+                </span>
+              </div>
+              <span className="text-zinc-400 group-hover:text-zinc-600 dark:group-hover:text-zinc-300">
+                →
+              </span>
+            </Link>
+            <Link
+              href="/dashboard/decks"
+              className="flex items-center justify-between p-4 rounded-xl bg-zinc-50 dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors group"
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">➕</span>
+                <span className="font-medium text-zinc-900 dark:text-zinc-100">
+                  新しいデッキ作成
+                </span>
+              </div>
+              <span className="text-zinc-400 group-hover:text-zinc-600 dark:group-hover:text-zinc-300">
+                →
+              </span>
+            </Link>
+            <Link
+              href="/dashboard/import"
+              className="flex items-center justify-between p-4 rounded-xl bg-zinc-50 dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors group"
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">📦</span>
+                <span className="font-medium text-zinc-900 dark:text-zinc-100">
+                  Ankiデータをインポート
+                </span>
+              </div>
+              <span className="text-zinc-400 group-hover:text-zinc-600 dark:group-hover:text-zinc-300">
+                →
+              </span>
+            </Link>
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-zinc-900 rounded-2xl p-8 shadow-sm border border-zinc-200 dark:border-zinc-800">
+          <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100 mb-4">
+            最近のアクティビティ
+          </h2>
+          <div className="text-center py-12 text-zinc-500 dark:text-zinc-500">
+            アクティビティがまだありません
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

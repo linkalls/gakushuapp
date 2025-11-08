@@ -27,11 +27,21 @@ type Deck = typeof decks.$inferSelect;
 type Card = typeof cards.$inferSelect;
 
 // Create Hono app
+// Note: basePath is removed because this file is already in /app/api/[[...route]]/
 const app = new Hono().basePath("/api");
 
 // Middleware
 app.use("*", cors());
 app.use("*", logger());
+
+// Helper function to get user from session
+async function getUserSession(headers: Headers) {
+  const session = await auth.api.getSession({ headers });
+  if (!session) {
+    return null;
+  }
+  return { userId: session.user.id, session };
+}
 
 // Health check
 app.get("/health", (c) => {
@@ -264,14 +274,17 @@ app.get("/decks/:id/stats", async (c) => {
 
 // Create deck
 app.post("/decks", async (c) => {
+  const userSession = await getUserSession(c.req.raw.headers);
+  if (!userSession) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  const userId = userSession.userId;
+
   const body = await c.req.json<{
     name: string;
     description?: string;
     parentId?: string;
   }>();
-
-  // TODO: Get user_id from auth session
-  const userId = "demo-user";
 
   const id = generateId();
   const timestamp = new Date();
@@ -502,7 +515,12 @@ app.delete("/cards/:id", async (c) => {
 
 // Get due cards
 app.get("/cards/due", async (c) => {
-  const userId = "demo-user"; // TODO: Get from auth
+  const userSession = await getUserSession(c.req.raw.headers);
+  if (!userSession) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  const userId = userSession.userId;
+
   const currentTime = now();
 
   // Get cards that are due (including new cards with state=0)
@@ -559,9 +577,24 @@ app.post("/reviews", async (c) => {
     return c.json({ error: "Card not found" }, 404);
   }
 
-  // Convert Drizzle card to schema Card (Date to number)
-  const card = {
-    ...dbCard,
+  // Convert Drizzle dates to timestamps for FSRS
+  const cardForFSRS = {
+    id: dbCard.id,
+    deckId: dbCard.deckId,
+    front: dbCard.front,
+    back: dbCard.back,
+    due:
+      typeof dbCard.due === "number"
+        ? dbCard.due
+        : (dbCard.due as Date).getTime(),
+    stability: dbCard.stability,
+    difficulty: dbCard.difficulty,
+    elapsedDays: dbCard.elapsedDays,
+    scheduledDays: dbCard.scheduledDays,
+    reps: dbCard.reps,
+    lapses: dbCard.lapses,
+    state: dbCard.state,
+    lastReview: dbCard.lastReview,
     createdAt:
       dbCard.createdAt instanceof Date
         ? dbCard.createdAt.getTime()
@@ -574,24 +607,47 @@ app.post("/reviews", async (c) => {
 
   // Process review with FSRS
   const { card: updatedCardData, log } = reviewCard(
-    card,
+    cardForFSRS,
     body.rating as Rating
   );
 
-  // Update card
+  console.log("Card before FSRS:", cardForFSRS);
+  console.log("Card after FSRS:", updatedCardData);
+  console.log("Review processed:", {
+    cardId: body.cardId,
+    rating: body.rating,
+    originalDue: cardForFSRS.due,
+    newDue: updatedCardData.due,
+    newDueIsNaN: Number.isNaN(updatedCardData.due),
+    newDueType: typeof updatedCardData.due,
+    originalState: cardForFSRS.state,
+    newState: updatedCardData.state,
+  });
+
+  // Ensure all required fields have values
+  if (
+    updatedCardData.due === undefined ||
+    updatedCardData.due === null ||
+    Number.isNaN(updatedCardData.due)
+  ) {
+    console.error("FSRS returned invalid due!", updatedCardData);
+    return c.json({ error: "Failed to calculate next review time" }, 500);
+  }
+
+  // Update card with FSRS data
   const timestamp = new Date();
   await db
     .update(cards)
     .set({
-      due: updatedCardData.due ?? card.due,
-      stability: updatedCardData.stability ?? card.stability,
-      difficulty: updatedCardData.difficulty ?? card.difficulty,
-      elapsedDays: updatedCardData.elapsedDays ?? card.elapsedDays,
-      scheduledDays: updatedCardData.scheduledDays ?? card.scheduledDays,
-      reps: updatedCardData.reps ?? card.reps,
-      lapses: updatedCardData.lapses ?? card.lapses,
-      state: updatedCardData.state ?? card.state,
-      lastReview: updatedCardData.lastReview ?? card.lastReview,
+      due: updatedCardData.due,
+      stability: updatedCardData.stability!,
+      difficulty: updatedCardData.difficulty!,
+      elapsedDays: updatedCardData.elapsedDays!,
+      scheduledDays: updatedCardData.scheduledDays!,
+      reps: updatedCardData.reps!,
+      lapses: updatedCardData.lapses!,
+      state: updatedCardData.state!,
+      lastReview: updatedCardData.lastReview!,
       updatedAt: timestamp,
     })
     .where(eq(cards.id, body.cardId));
@@ -617,7 +673,11 @@ app.post("/reviews", async (c) => {
 
 // Get statistics
 app.get("/stats", async (c) => {
-  const userId = "demo-user"; // TODO: Get from auth
+  const userSession = await getUserSession(c.req.raw.headers);
+  if (!userSession) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  const userId = userSession.userId;
 
   // Get all cards for the user
   const cardsList = await db
@@ -691,7 +751,12 @@ app.get("/stats", async (c) => {
 
 // Get detailed statistics for charts
 app.get("/stats/detailed", async (c) => {
-  const userId = "demo-user"; // TODO: Get from auth
+  const userSession = await getUserSession(c.req.raw.headers);
+  if (!userSession) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  const userId = userSession.userId;
+
   const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
 
   // Get all reviews for the past 30 days
@@ -1023,8 +1088,11 @@ app.post("/import/apkg", async (c) => {
 
 // Get all tags for a user
 app.get("/tags", async (c) => {
-  // TODO: Get user_id from auth session
-  const userId = "demo-user";
+  const userSession = await getUserSession(c.req.raw.headers);
+  if (!userSession) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  const userId = userSession.userId;
 
   const tagsList = await db
     .select()
@@ -1050,10 +1118,13 @@ app.get("/tags/:id", async (c) => {
 
 // Create tag
 app.post("/tags", async (c) => {
-  const body = await c.req.json<{ name: string }>();
+  const userSession = await getUserSession(c.req.raw.headers);
+  if (!userSession) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  const userId = userSession.userId;
 
-  // TODO: Get user_id from auth session
-  const userId = "demo-user";
+  const body = await c.req.json<{ name: string }>();
 
   // Check if tag already exists
   const existing = await db
@@ -1212,7 +1283,12 @@ app.get("/tags/:tagId/cards", async (c) => {
 
 // Search cards
 app.get("/search", async (c) => {
-  const userId = "demo-user"; // TODO: Get from auth
+  const userSession = await getUserSession(c.req.raw.headers);
+  if (!userSession) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  const userId = userSession.userId;
+
   const query = c.req.query("q") || "";
   const deckIdFilter = c.req.query("deckId");
   const stateFilter = c.req.query("state");
