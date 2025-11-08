@@ -48,8 +48,13 @@ app.get("/health", (c) => {
 
 // Get all decks for a user with stats
 app.get("/decks", async (c) => {
-  // TODO: Get user_id from auth session
-  const userId = "demo-user"; // Temporary
+  // Get userId from session
+  const session = await auth.api.getSession({ headers: c.req.raw.headers });
+  if (!session) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  const userId = session.user.id;
+
   const includeStats = c.req.query("includeStats") === "true";
 
   const allDecks = await db
@@ -269,7 +274,7 @@ app.post("/decks", async (c) => {
   const userId = "demo-user";
 
   const id = generateId();
-  const timestamp = now();
+  const timestamp = new Date();
 
   // Calculate deckPath
   let deckPath = body.name;
@@ -312,7 +317,7 @@ app.put("/decks/:id", async (c) => {
     return c.json({ error: "Deck not found" }, 404);
   }
 
-  const timestamp = now();
+  const timestamp = new Date();
   await db
     .update(decks)
     .set({
@@ -430,7 +435,7 @@ app.post("/cards", async (c) => {
   }>();
 
   const id = generateId();
-  const timestamp = now();
+  const timestamp = new Date();
   const initialState = getInitialCardState();
 
   await db.insert(cards).values({
@@ -438,7 +443,7 @@ app.post("/cards", async (c) => {
     deckId: body.deckId,
     front: body.front,
     back: body.back,
-    due: initialState.due ?? timestamp,
+    due: initialState.due ?? timestamp.getTime(),
     stability: initialState.stability ?? 0,
     difficulty: initialState.difficulty ?? 0,
     elapsedDays: initialState.elapsedDays ?? 0,
@@ -467,7 +472,7 @@ app.put("/cards/:id", async (c) => {
     return c.json({ error: "Card not found" }, 404);
   }
 
-  const timestamp = now();
+  const timestamp = new Date();
   await db
     .update(cards)
     .set({
@@ -544,15 +549,28 @@ app.get("/cards/due", async (c) => {
 app.post("/reviews", async (c) => {
   const body = await c.req.json<{ cardId: string; rating: number }>();
 
-  const card = await db
+  const dbCard = await db
     .select()
     .from(cards)
     .where(eq(cards.id, body.cardId))
     .get();
 
-  if (!card) {
+  if (!dbCard) {
     return c.json({ error: "Card not found" }, 404);
   }
+
+  // Convert Drizzle card to schema Card (Date to number)
+  const card = {
+    ...dbCard,
+    createdAt:
+      dbCard.createdAt instanceof Date
+        ? dbCard.createdAt.getTime()
+        : dbCard.createdAt,
+    updatedAt:
+      dbCard.updatedAt instanceof Date
+        ? dbCard.updatedAt.getTime()
+        : dbCard.updatedAt,
+  };
 
   // Process review with FSRS
   const { card: updatedCardData, log } = reviewCard(
@@ -561,7 +579,7 @@ app.post("/reviews", async (c) => {
   );
 
   // Update card
-  const timestamp = now();
+  const timestamp = new Date();
   await db
     .update(cards)
     .set({
@@ -584,7 +602,7 @@ app.post("/reviews", async (c) => {
     id: reviewId,
     cardId: body.cardId,
     rating: body.rating,
-    reviewTime: timestamp,
+    reviewTime: timestamp.getTime(),
     createdAt: timestamp,
   });
 
@@ -838,7 +856,7 @@ app.post("/import/apkg", async (c) => {
           if (!parentId) {
             const parentName = parts[parts.length - 2];
             const newParentId = generateId();
-            const timestamp = now();
+            const timestamp = new Date();
 
             // Determine grandparent path
             let grandparentPath = "";
@@ -867,7 +885,7 @@ app.post("/import/apkg", async (c) => {
         }
 
         const newDeckId = generateId();
-        const timestamp = now();
+        const timestamp = new Date();
 
         await db.insert(decks).values({
           id: newDeckId,
@@ -917,7 +935,7 @@ app.post("/import/apkg", async (c) => {
         }
 
         const newCardId = generateId();
-        const timestamp = now();
+        const timestamp = new Date();
 
         // Convert Anki state to our FSRS state
         const initialState = getInitialCardState();
@@ -927,7 +945,7 @@ app.post("/import/apkg", async (c) => {
         // - type 1 (learning): due is timestamp in seconds
         // - type 2 (review): due is days since collection creation (col.crt)
         // - type 3 (relearning): due is timestamp in seconds
-        let dueTime = timestamp; // Default: available now (for new cards)
+        let dueTime = timestamp.getTime(); // Default: available now (for new cards)
 
         if (ankiCard.type === 2 && ankiCard.due !== undefined) {
           // Review cards: due is days since collection creation
@@ -935,8 +953,8 @@ app.post("/import/apkg", async (c) => {
           dueTime = (collectionCreated + ankiCard.due * 86400) * 1000;
 
           // If the due date is in the past, set to now for immediate review
-          if (dueTime < timestamp) {
-            dueTime = timestamp;
+          if (dueTime < timestamp.getTime()) {
+            dueTime = timestamp.getTime();
           }
         } else if (
           (ankiCard.type === 1 || ankiCard.type === 3) &&
@@ -946,8 +964,8 @@ app.post("/import/apkg", async (c) => {
           dueTime = ankiCard.due * 1000;
 
           // If the due date is in the past, set to now
-          if (dueTime < timestamp) {
-            dueTime = timestamp;
+          if (dueTime < timestamp.getTime()) {
+            dueTime = timestamp.getTime();
           }
         }
         // else: new cards (type 0) → use default dueTime = timestamp (now)
@@ -1253,181 +1271,6 @@ app.get("/search", async (c) => {
     total: searchResults.length,
     query,
   });
-});
-
-// ============================================
-// Import API
-// ============================================
-
-// Import .apkg file
-app.post("/import/apkg", async (c) => {
-  const userId = "demo-user"; // TODO: Get from auth
-
-  try {
-    const body = await c.req.parseBody();
-    const file = body.file as File;
-
-    if (!file) {
-      return c.json({ error: "No file provided" }, 400);
-    }
-
-    // Read file buffer
-    const arrayBuffer = await file.arrayBuffer();
-
-    // Parse .apkg file
-    const {
-      notes,
-      cards: ankiCards,
-      decks: ankiDecks,
-      collectionCreated,
-      media,
-    } = await parseApkgFile(arrayBuffer);
-
-    const timestamp = now();
-    const errors: string[] = [];
-    let decksImported = 0;
-    let cardsImported = 0;
-    let mediaImported = 0;
-
-    // Create deck map (Anki deck ID -> our deck ID)
-    const deckMap = new Map<number, string>();
-
-    // Import decks
-    for (const [ankiDeckId, ankiDeck] of ankiDecks) {
-      try {
-        const deckId = generateId();
-        const parts = ankiDeck.name.split("::");
-        let deckPath = ankiDeck.name;
-        let parentId: string | null = null;
-
-        // Handle hierarchical decks
-        if (parts.length > 1) {
-          // Find or create parent deck
-          const parentPath = parts.slice(0, -1).join("::");
-          const parentDeck = await db
-            .select()
-            .from(decks)
-            .where(
-              and(eq(decks.userId, userId), eq(decks.deckPath, parentPath))
-            )
-            .get();
-
-          if (parentDeck) {
-            parentId = parentDeck.id;
-          }
-        }
-
-        await db.insert(decks).values({
-          id: deckId,
-          userId,
-          name: parts[parts.length - 1],
-          description: ankiDeck.desc || null,
-          parentId,
-          deckPath,
-          createdAt: timestamp,
-          updatedAt: timestamp,
-        });
-
-        deckMap.set(ankiDeckId, deckId);
-        decksImported++;
-      } catch (error) {
-        errors.push(`Failed to import deck "${ankiDeck.name}": ${error}`);
-      }
-    }
-
-    // Create note map (Anki note ID -> fields)
-    const noteMap = new Map<number, string[]>();
-    for (const note of notes) {
-      noteMap.set(note.id, note.flds.split("\x1f"));
-    }
-
-    // Import cards
-    for (const ankiCard of ankiCards) {
-      try {
-        const deckId = deckMap.get(ankiCard.did);
-        if (!deckId) {
-          errors.push(`No deck found for card ${ankiCard.id}`);
-          continue;
-        }
-
-        const fields = noteMap.get(ankiCard.nid);
-        if (!fields || fields.length < 2) {
-          errors.push(`Invalid note data for card ${ankiCard.id}`);
-          continue;
-        }
-
-        // Calculate proper due date
-        let dueTime = timestamp; // Default: available now
-        if (ankiCard.type !== 0 && ankiCard.due) {
-          // Review cards: due is days since collection creation
-          const collectionCreatedMs = collectionCreated * 1000;
-          dueTime = collectionCreatedMs + ankiCard.due * 86400000;
-
-          // If past due, make available now
-          if (dueTime < timestamp) {
-            dueTime = timestamp;
-          }
-        }
-
-        const cardId = generateId();
-        await db.insert(cards).values({
-          id: cardId,
-          deckId,
-          front: fields[0],
-          back: fields[1],
-          due: dueTime,
-          stability: 0,
-          difficulty: 0,
-          elapsedDays: 0,
-          scheduledDays: 0,
-          reps: ankiCard.reps,
-          lapses: ankiCard.lapses,
-          state: ankiCard.type === 0 ? 0 : 2, // 0 = new, 2 = review
-          lastReview: null,
-          createdAt: timestamp,
-          updatedAt: timestamp,
-        });
-
-        cardsImported++;
-      } catch (error) {
-        errors.push(`Failed to import card ${ankiCard.id}: ${error}`);
-      }
-    }
-
-    // Import media files
-    if (media.size > 0) {
-      const { mkdir, writeFile } = await import("fs/promises");
-      const mediaDir = path.join(process.cwd(), "public", "media");
-
-      try {
-        await mkdir(mediaDir, { recursive: true });
-
-        for (const [filename, data] of media) {
-          try {
-            const filePath = path.join(mediaDir, filename);
-            await writeFile(filePath, data);
-            mediaImported++;
-          } catch (error) {
-            errors.push(`Failed to save media file "${filename}": ${error}`);
-          }
-        }
-      } catch (error) {
-        errors.push(`Failed to create media directory: ${error}`);
-      }
-    }
-
-    const result: ImportResult = {
-      decksImported,
-      cardsImported,
-      mediaImported,
-      errors,
-    };
-
-    return c.json(result);
-  } catch (error) {
-    console.error("Import error:", error);
-    return c.json({ error: `Import failed: ${error}` }, 500);
-  }
 });
 
 export const GET = handle(app);

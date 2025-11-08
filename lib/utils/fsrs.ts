@@ -1,4 +1,4 @@
-import { FSRS, Rating, State, type Card, type RecordLog, type Grade } from "ts-fsrs";
+import { FSRS, Rating, State, type Card, type Grade } from "ts-fsrs";
 import type { Card as DBCard } from "../db/schema";
 
 // Initialize FSRS instance with default parameters
@@ -27,7 +27,12 @@ export function dbCardToFSRS(dbCard: DBCard): Card {
  */
 export function fsrsCardToDB(fsrsCard: Card): Partial<DBCard> {
   return {
-    due: fsrsCard.due.getTime(),
+    // fsrsCard.due can be a Date or a numeric timestamp depending on ts-fsrs version/runtime.
+    // Coerce safely to a number to avoid "value.getTime is not a function" errors.
+    due:
+      fsrsCard.due instanceof Date
+        ? fsrsCard.due.getTime()
+        : Number(fsrsCard.due),
     stability: fsrsCard.stability,
     difficulty: fsrsCard.difficulty,
     elapsedDays: fsrsCard.elapsed_days,
@@ -35,7 +40,11 @@ export function fsrsCardToDB(fsrsCard: Card): Partial<DBCard> {
     reps: fsrsCard.reps,
     lapses: fsrsCard.lapses,
     state: fsrsCard.state,
-    lastReview: fsrsCard.last_review ? fsrsCard.last_review.getTime() : null,
+    lastReview: fsrsCard.last_review
+      ? fsrsCard.last_review instanceof Date
+        ? fsrsCard.last_review.getTime()
+        : Number(fsrsCard.last_review)
+      : null,
   };
 }
 
@@ -106,4 +115,3 @@ export function getNextIntervals(
 }
 
 export { Rating, State };
-

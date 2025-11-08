@@ -7,11 +7,11 @@ interface Deck {
   id: string;
   name: string;
   description: string | null;
-  user_id: string;
-  parent_id: string | null;
-  deck_path: string;
-  created_at: number;
-  updated_at: number;
+  userId: string;
+  parentId: string | null;
+  deckPath: string;
+  createdAt: number | Date;
+  updatedAt: number | Date;
 }
 
 interface DeckStats {
@@ -80,7 +80,7 @@ export default function DecksPage() {
 
     // Create deck objects with level
     decks.forEach((deck) => {
-      const level = deck.deck_path.split("::").length - 1;
+      const level = deck.deckPath.split("::").length - 1;
       deckMap.set(deck.id, {
         ...deck,
         stats: deckStats.get(deck.id),
@@ -92,8 +92,8 @@ export default function DecksPage() {
     // Build tree structure
     decks.forEach((deck) => {
       const deckWithStats = deckMap.get(deck.id)!;
-      if (deck.parent_id) {
-        const parent = deckMap.get(deck.parent_id);
+      if (deck.parentId) {
+        const parent = deckMap.get(deck.parentId);
         if (parent) {
           parent.children!.push(deckWithStats);
         } else {
