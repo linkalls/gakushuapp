@@ -1,36 +1,148 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Gakushu - モダンな間隔反復学習アプリ
 
-## Getting Started
+Anki の代替となる、美しくて使いやすい間隔反復学習アプリケーションです。科学的に証明された FSRS アルゴリズムを使用して、効率的な学習をサポートします。
 
-First, run the development server:
+## ✨ 主な機能
+
+- 📚 **デッキ管理** - 複数のデッキを作成・管理
+- 🃏 **カード学習** - FSRS ベースの最適なスケジューリング
+- 📊 **詳細な統計** - 学習進捗の可視化
+- 📦 **Anki インポート** - .apkg ファイルから簡単移行
+- 🌓 **ダークモード** - 目に優しいダークテーマ
+- 📱 **レスポンシブ** - モバイル・タブレット・デスクトップ対応
+- ⚡ **高速** - Bun ランタイムによる高速動作
+
+## 🚀 クイックスタート
+
+### 必要な環境
+
+- [Bun](https://bun.sh) v1.0 以上
+
+### インストール
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
+# リポジトリをクローン
+git clone <repository-url>
+cd gakushuapp
+
+# 依存関係をインストール
+bun install
+
+# 開発サーバーを起動
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+ブラウザで [http://localhost:3000](http://localhost:3000) を開きます。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### デモログイン
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+デモユーザーでログインして機能を試すことができます：
 
-## Learn More
+1. 「学習を開始」をクリック
+2. 「デモユーザーでログイン」をクリック
 
-To learn more about Next.js, take a look at the following resources:
+## 🛠️ 技術スタック
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### フロントエンド
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- **Next.js 16** - App Router
+- **React 19** - 最新の React
+- **Tailwind CSS 4** - モダンなスタイリング
+- **TypeScript** - 型安全性
 
-## Deploy on Vercel
+### バックエンド
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- **Hono** - 軽量な API ルート
+- **Bun:SQLite** - 高速データベース
+- **Drizzle ORM** - 型安全な ORM
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### 学習アルゴリズム
+
+- **ts-fsrs v5** - Free Spaced Repetition Scheduler
+
+## 📖 使い方
+
+### デッキを作成
+
+1. ダッシュボードから「デッキ」に移動
+2. 「新しいデッキ」をクリック
+3. デッキ名と説明を入力
+
+### カードを追加
+
+1. デッキ詳細ページを開く
+2. 「カードを追加」をクリック
+3. 表面と裏面を入力
+
+### 学習を開始
+
+1. デッキから「学習開始」をクリック
+2. カードを確認して評価を選択:
+   - **Again** (1) - もう一度
+   - **Hard** (2) - 難しい
+   - **Good** (3) - 普通
+   - **Easy** (4) - 簡単
+
+### Anki からインポート
+
+1. 「インポート」ページに移動
+2. .apkg ファイルを選択
+3. インポート完了を待つ
+
+## 📂 プロジェクト構造
+
+```
+gakushuapp/
+├── app/                    # Next.js App Router
+│   ├── (auth)/            # 認証ページ
+│   ├── (dashboard)/       # ダッシュボードページ
+│   └── api/               # Hono API Routes
+├── components/            # Reactコンポーネント
+├── lib/
+│   ├── db/               # データベース設定
+│   └── utils/            # ユーティリティ関数
+├── docs/                  # ドキュメント
+│   ├── todo.md           # TODOリスト
+│   ├── progress.md       # 進捗レポート
+│   └── session-2-updates.md  # 更新履歴
+└── data/                  # SQLiteデータベース
+```
+
+## 🔧 データベース管理
+
+```bash
+# スキーマをDBにプッシュ
+bun db:push
+
+# Drizzle Studioを起動（データベース管理UI）
+bun db:studio
+```
+
+## 📊 統計機能
+
+- 過去 30 日間の復習数グラフ
+- カード状態の分布（新規/学習中/復習中）
+- 保持率の計算
+- 今日の学習統計
+
+## 🎯 ロードマップ
+
+- [x] Phase 1-3: 基本機能と UI
+- [x] Phase 4: Anki インポート
+- [ ] Phase 5: タグシステム、検索機能
+- [ ] Phase 6: Better Auth 統合
+- [ ] Phase 7: AI 機能（カード自動生成）
+
+詳細は [docs/todo.md](docs/todo.md) を参照してください。
+
+## 📝 ライセンス
+
+MIT
+
+## 🤝 コントリビューション
+
+プルリクエストを歓迎します！
+
+---
+
+**Note**: このプロジェクトは開発中です。機能の追加や改善を継続的に行っています。
