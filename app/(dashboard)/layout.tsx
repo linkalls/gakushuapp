@@ -1,10 +1,9 @@
 "use client";
 
 import { AuthGuard } from "@/components/auth-guard";
-import { getCurrentUser, logout } from "@/lib/auth";
+import { signOut, useSession } from "@/lib/auth-client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
 
 export default function DashboardLayout({
   children,
@@ -12,14 +11,10 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const [user, setUser] = useState<any>(null);
+  const { data: session } = useSession();
 
-  useEffect(() => {
-    setUser(getCurrentUser());
-  }, []);
-
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await signOut();
     router.push("/login");
   };
 
@@ -50,6 +45,18 @@ export default function DashboardLayout({
                     デッキ
                   </Link>
                   <Link
+                    href="/dashboard/tags"
+                    className="text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
+                  >
+                    タグ
+                  </Link>
+                  <Link
+                    href="/dashboard/search"
+                    className="text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
+                  >
+                    検索
+                  </Link>
+                  <Link
                     href="/dashboard/study"
                     className="text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
                   >
@@ -61,12 +68,18 @@ export default function DashboardLayout({
                   >
                     統計
                   </Link>
+                  <Link
+                    href="/dashboard/import"
+                    className="text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
+                  >
+                    インポート
+                  </Link>
                 </div>
               </div>
               <div className="flex items-center gap-4">
-                {user && (
+                {session?.user && (
                   <span className="text-sm text-zinc-600 dark:text-zinc-400">
-                    {user.name}
+                    {session.user.name}
                   </span>
                 )}
                 <button

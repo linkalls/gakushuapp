@@ -245,15 +245,6 @@ export default function DecksPage() {
               )}
 
               <div className="flex gap-2 mt-3">
-                <button
-                  onClick={() => {
-                    setNewDeck({ ...newDeck, parent_id: deck.id });
-                    setShowNewDeckForm(true);
-                  }}
-                  className="flex-1 px-3 py-2 bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 rounded-lg text-center font-medium hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors text-sm"
-                >
-                  ➕ サブデッキ
-                </button>
                 <Link
                   href={`/dashboard/decks/${deck.id}`}
                   className="flex-1 px-3 py-2 bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 rounded-lg text-center font-medium hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors text-sm"

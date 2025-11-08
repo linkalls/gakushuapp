@@ -20,6 +20,12 @@ interface Card {
   due: number;
 }
 
+interface Tag {
+  id: string;
+  name: string;
+  user_id: string;
+}
+
 interface PaginatedResponse {
   cards: Card[];
   pagination: {
@@ -45,10 +51,12 @@ export default function DeckDetailPage() {
   });
   const [loading, setLoading] = useState(true);
   const [showNewCardForm, setShowNewCardForm] = useState(false);
-  const [newCard, setNewCard] = useState({ front: "", back: "" });
+  const [newCard, setNewCard] = useState({ front: "", back: "", tags: [] as string[] });
+  const [availableTags, setAvailableTags] = useState<Tag[]>([]);
 
   useEffect(() => {
     fetchDeck();
+    fetchTags();
   }, [deckId]);
 
   useEffect(() => {
@@ -60,6 +68,16 @@ export default function DeckDetailPage() {
       .then((res) => res.json())
       .then((data) => setDeck(data))
       .catch((error) => console.error("Failed to fetch deck:", error));
+  };
+
+  const fetchTags = async () => {
+    try {
+      const res = await fetch("/api/tags");
+      const data = await res.json();
+      setAvailableTags(data);
+    } catch (error) {
+      console.error("Failed to fetch tags:", error);
+    }
   };
 
   const fetchCards = () => {
@@ -95,13 +113,33 @@ export default function DeckDetailPage() {
       });
 
       if (res.ok) {
-        setNewCard({ front: "", back: "" });
+        const createdCard = await res.json();
+
+        // タグを追加
+        for (const tagId of newCard.tags) {
+          await fetch(`/api/cards/${createdCard.id}/tags`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ tag_id: tagId }),
+          });
+        }
+
+        setNewCard({ front: "", back: "", tags: [] });
         setShowNewCardForm(false);
         fetchCards();
       }
     } catch (error) {
       console.error("Failed to create card:", error);
     }
+  };
+
+  const toggleTag = (tagId: string) => {
+    setNewCard((prev) => ({
+      ...prev,
+      tags: prev.tags.includes(tagId)
+        ? prev.tags.filter((id) => id !== tagId)
+        : [...prev.tags, tagId],
+    }));
   };
 
   const deleteCard = async (cardId: string) => {
@@ -206,6 +244,30 @@ export default function DeckDetailPage() {
                 placeholder="答えを入力"
               />
             </div>
+
+            {availableTags.length > 0 && (
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">
+                  タグ (オプション)
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {availableTags.map((tag) => (
+                    <button
+                      key={tag.id}
+                      type="button"
+                      onClick={() => toggleTag(tag.id)}
+                      className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${newCard.tags.includes(tag.id)
+                          ? "bg-zinc-900 dark:bg-zinc-100 text-zinc-50 dark:text-zinc-900"
+                          : "bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+                        }`}
+                    >
+                      {tag.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="flex gap-3">
               <button
                 onClick={createCard}
@@ -214,7 +276,10 @@ export default function DeckDetailPage() {
                 作成
               </button>
               <button
-                onClick={() => setShowNewCardForm(false)}
+                onClick={() => {
+                  setShowNewCardForm(false);
+                  setNewCard({ front: "", back: "", tags: [] });
+                }}
                 className="px-6 py-2 bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 rounded-lg font-medium hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
               >
                 キャンセル

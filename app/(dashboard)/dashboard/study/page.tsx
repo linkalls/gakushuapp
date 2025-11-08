@@ -23,10 +23,25 @@ export default function StudyPage() {
   const [showAnswer, setShowAnswer] = useState(false);
   const [loading, setLoading] = useState(true);
   const [finished, setFinished] = useState(false);
+  const [studyStartTime, setStudyStartTime] = useState<number>(0);
+  const [elapsedTime, setElapsedTime] = useState<number>(0);
+  const [reviewedCount, setReviewedCount] = useState<number>(0);
 
   useEffect(() => {
     fetchDueCards();
+    setStudyStartTime(Date.now());
   }, [deckId]);
+
+  // Timer effect
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (studyStartTime > 0 && !finished) {
+        setElapsedTime(Math.floor((Date.now() - studyStartTime) / 1000));
+      }
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [studyStartTime, finished]);
 
   const fetchDueCards = () => {
     let url = "/api/cards/due";
@@ -40,7 +55,16 @@ export default function StudyPage() {
       .then((res) => res.json())
       .then((data) => {
         // ページネーション対応の場合とそうでない場合を処理
-        const allCards = data.cards || data;
+        let allCards: Card[] = [];
+
+        if (Array.isArray(data)) {
+          // 配列の場合（/api/cards/due）
+          allCards = data;
+        } else if (data.cards && Array.isArray(data.cards)) {
+          // ページネーション形式の場合（/api/decks/:id/cards）
+          allCards = data.cards;
+        }
+
         const dueCards = allCards.filter((card: Card) => card.due <= Date.now());
         setCards(dueCards);
         setLoading(false);
@@ -68,6 +92,9 @@ export default function StudyPage() {
         }),
       });
 
+      // Increment reviewed count
+      setReviewedCount((prev) => prev + 1);
+
       // Move to next card
       if (currentIndex + 1 >= cards.length) {
         setFinished(true);
@@ -79,6 +106,15 @@ export default function StudyPage() {
       console.error("Failed to submit review:", error);
     }
   };
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  };
+
+  const newCardsCount = cards.filter((card) => card.reps === 0).length;
+  const reviewCardsCount = cards.filter((card) => card.reps > 0).length;
 
   if (loading) {
     return (
@@ -116,15 +152,22 @@ export default function StudyPage() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-8">
-      <div className="flex items-center justify-between">
+      {/* Header with stats in top right */}
+      <div className="flex items-start justify-between">
         <div>
           <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-100">学習</h1>
           <p className="text-zinc-600 dark:text-zinc-400 mt-2">
             {currentIndex + 1} / {cards.length} カード
           </p>
         </div>
-        <div className="text-sm text-zinc-500 dark:text-zinc-500">
-          残り {cards.length - currentIndex - 1} カード
+
+        {/* Stats in top right - matching the image */}
+        <div className="flex items-center gap-4 text-lg font-medium text-zinc-900 dark:text-zinc-100">
+          <span className="text-zinc-900 dark:text-zinc-100">{reviewedCount}</span>
+          <span className="text-zinc-400">+</span>
+          <span className="text-blue-600 dark:text-blue-400">{newCardsCount - reviewedCount > 0 ? newCardsCount - reviewedCount : 0}</span>
+          <span className="text-zinc-400">+</span>
+          <span className="text-green-600 dark:text-green-400">{cards.length - currentIndex - 1}</span>
         </div>
       </div>
 

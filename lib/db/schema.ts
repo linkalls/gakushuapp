@@ -86,53 +86,53 @@ export interface User {
   id: string;
   email: string;
   name: string | null;
-  created_at: number;
-  updated_at: number;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface Deck {
   id: string;
-  user_id: string;
+  userId: string;
   name: string;
   description: string | null;
-  parent_id: string | null;
-  deck_path: string;
-  created_at: number;
-  updated_at: number;
+  parentId: string | null;
+  deckPath: string;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface Card {
   id: string;
-  deck_id: string;
+  deckId: string;
   front: string;
   back: string;
   due: number;
   stability: number;
   difficulty: number;
-  elapsed_days: number;
-  scheduled_days: number;
+  elapsedDays: number;
+  scheduledDays: number;
   reps: number;
   lapses: number;
   state: number;
-  last_review: number | null;
-  created_at: number;
-  updated_at: number;
+  lastReview: number | null;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface Review {
   id: string;
-  card_id: string;
+  cardId: string;
   rating: number;
-  review_time: number;
+  reviewTime: number;
 }
 
 export interface Tag {
   id: string;
   name: string;
-  user_id: string;
+  userId: string;
 }
 
 export interface CardTag {
-  card_id: string;
-  tag_id: string;
+  cardId: string;
+  tagId: string;
 }

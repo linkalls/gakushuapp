@@ -35,6 +35,7 @@ interface AnkiDeck {
 export interface ImportResult {
   decksImported: number;
   cardsImported: number;
+  mediaImported: number;
   errors: string[];
 }
 
@@ -42,6 +43,8 @@ export async function parseApkgFile(fileBuffer: ArrayBuffer): Promise<{
   notes: AnkiNote[];
   cards: AnkiCard[];
   decks: Map<number, AnkiDeck>;
+  collectionCreated: number; // Unix timestamp (seconds) of collection creation
+  media: Map<string, Uint8Array>; // filename -> file data
 }> {
   // Unzip the .apkg file
   const zip = await JSZip.loadAsync(fileBuffer);
@@ -51,6 +54,29 @@ export async function parseApkgFile(fileBuffer: ArrayBuffer): Promise<{
 
   if (!dbFile) {
     throw new Error("No collection database found in .apkg file");
+  }
+
+  // Extract media files
+  const media = new Map<string, Uint8Array>();
+  const mediaFile = zip.file("media");
+  
+  if (mediaFile) {
+    const mediaContent = await mediaFile.async("string");
+    try {
+      const mediaJson = JSON.parse(mediaContent) as Record<string, string>;
+      
+      // Extract each media file referenced in media JSON
+      for (const [index, filename] of Object.entries(mediaJson)) {
+        const mediaDataFile = zip.file(index);
+        if (mediaDataFile) {
+          const data = await mediaDataFile.async("uint8array");
+          media.set(filename, data);
+        }
+      }
+    } catch (e) {
+      // media file might be empty or invalid JSON, that's ok
+      console.warn("Could not parse media file:", e);
+    }
   }
 
   // Extract the database to a temporary file
@@ -64,11 +90,15 @@ export async function parseApkgFile(fileBuffer: ArrayBuffer): Promise<{
     // Open the database with bun:sqlite
     const db = new Database(tempDbPath, { readonly: true });
 
-    // Parse decks from col table
-    const colResult = db.query("SELECT decks FROM col").get() as {
+    // Get collection creation time (crt)
+    const colData = db.query("SELECT crt, decks FROM col").get() as {
+      crt: number;
       decks: string;
     };
-    const decksJson = JSON.parse(colResult.decks);
+    const collectionCreated = colData.crt; // Unix timestamp in seconds
+
+    // Parse decks from col table
+    const decksJson = JSON.parse(colData.decks);
     const decks = new Map<number, AnkiDeck>();
 
     for (const [deckId, deckData] of Object.entries(
@@ -100,7 +130,7 @@ export async function parseApkgFile(fileBuffer: ArrayBuffer): Promise<{
     // Clean up temporary file
     unlinkSync(tempDbPath);
 
-    return { notes, cards, decks };
+    return { notes, cards, decks, collectionCreated, media };
   } catch (error) {
     // Clean up temporary file on error
     try {

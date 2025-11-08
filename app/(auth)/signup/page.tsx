@@ -2,13 +2,14 @@
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { signIn, useSession } from "@/lib/auth-client";
+import { signUp, useSession } from "@/lib/auth-client";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-export default function LoginPage() {
+export default function SignupPage() {
   const router = useRouter();
   const { data: session } = useSession();
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -20,19 +21,20 @@ export default function LoginPage() {
     }
   }, [session, router]);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setLoading(true);
 
     try {
-      await signIn.email({
+      await signUp.email({
+        name,
         email,
         password,
       });
       router.push("/dashboard");
     } catch (err: any) {
-      setError(err.message || "ログインに失敗しました");
+      setError(err.message || "登録に失敗しました");
     } finally {
       setLoading(false);
     }
@@ -47,11 +49,29 @@ export default function LoginPage() {
               Gakushu
             </h1>
             <p className="text-zinc-600 dark:text-zinc-400">
-              ログインして学習を開始
+              アカウントを作成
             </p>
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-4">
+          <form onSubmit={handleSignup} className="space-y-4">
+            <div>
+              <label
+                htmlFor="name"
+                className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1"
+              >
+                名前
+              </label>
+              <Input
+                id="name"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="山田太郎"
+                required
+                disabled={loading}
+              />
+            </div>
+
             <div>
               <label
                 htmlFor="email"
@@ -84,8 +104,12 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
                 required
+                minLength={8}
                 disabled={loading}
               />
+              <p className="text-xs text-zinc-500 dark:text-zinc-500 mt-1">
+                8文字以上で入力してください
+              </p>
             </div>
 
             {error && (
@@ -99,18 +123,18 @@ export default function LoginPage() {
               className="w-full"
               disabled={loading}
             >
-              {loading ? "ログイン中..." : "ログイン"}
+              {loading ? "登録中..." : "アカウント作成"}
             </Button>
           </form>
 
           <div className="mt-6 text-center">
             <p className="text-sm text-zinc-600 dark:text-zinc-400">
-              アカウントをお持ちでないですか？{" "}
+              すでにアカウントをお持ちですか？{" "}
               <a
-                href="/signup"
+                href="/login"
                 className="text-zinc-900 dark:text-zinc-100 font-medium hover:underline"
               >
-                新規登録
+                ログイン
               </a>
             </p>
           </div>
@@ -119,7 +143,7 @@ export default function LoginPage() {
             <div className="text-xs text-zinc-500 dark:text-zinc-500 space-y-1">
               <p>✨ FSRS アルゴリズム搭載</p>
               <p>📊 詳細な学習統計</p>
-              <p>🌓 Dark Mode 対応</p>
+              <p>�� Dark Mode 対応</p>
             </div>
           </div>
         </div>

@@ -1,4 +1,4 @@
-import { FSRS, Rating, State, type Card, type Grade } from "ts-fsrs";
+import { FSRS, Rating, State, type Card, type RecordLog, type Grade } from "ts-fsrs";
 import type { Card as DBCard } from "../db/schema";
 
 // Initialize FSRS instance with default parameters
@@ -12,13 +12,13 @@ export function dbCardToFSRS(dbCard: DBCard): Card {
     due: new Date(dbCard.due),
     stability: dbCard.stability,
     difficulty: dbCard.difficulty,
-    elapsed_days: dbCard.elapsed_days,
-    scheduled_days: dbCard.scheduled_days,
+    elapsed_days: dbCard.elapsedDays,
+    scheduled_days: dbCard.scheduledDays,
     learning_steps: 0, // Required in ts-fsrs v5+
     reps: dbCard.reps,
     lapses: dbCard.lapses,
     state: dbCard.state as State,
-    last_review: dbCard.last_review ? new Date(dbCard.last_review) : undefined,
+    last_review: dbCard.lastReview ? new Date(dbCard.lastReview) : undefined,
   };
 }
 
@@ -30,12 +30,12 @@ export function fsrsCardToDB(fsrsCard: Card): Partial<DBCard> {
     due: fsrsCard.due.getTime(),
     stability: fsrsCard.stability,
     difficulty: fsrsCard.difficulty,
-    elapsed_days: fsrsCard.elapsed_days,
-    scheduled_days: fsrsCard.scheduled_days,
+    elapsedDays: fsrsCard.elapsed_days,
+    scheduledDays: fsrsCard.scheduled_days,
     reps: fsrsCard.reps,
     lapses: fsrsCard.lapses,
     state: fsrsCard.state,
-    last_review: fsrsCard.last_review ? fsrsCard.last_review.getTime() : null,
+    lastReview: fsrsCard.last_review ? fsrsCard.last_review.getTime() : null,
   };
 }
 
@@ -106,3 +106,4 @@ export function getNextIntervals(
 }
 
 export { Rating, State };
+
