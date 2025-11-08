@@ -23,10 +23,11 @@ app.get("/health", (c) => {
 // Decks API
 // ============================================
 
-// Get all decks for a user
+// Get all decks for a user with stats
 app.get("/decks", (c) => {
   // TODO: Get user_id from auth session
   const userId = "demo-user"; // Temporary
+  const includeStats = c.req.query("includeStats") === "true";
 
   const decks = database
     .query<Deck, [string]>(
@@ -34,7 +35,83 @@ app.get("/decks", (c) => {
     )
     .all(userId);
 
-  return c.json(decks);
+  if (!includeStats) {
+    return c.json(decks);
+  }
+
+  // Batch calculate stats for all decks
+  const currentTime = now();
+  const decksWithStats = decks.map((deck) => {
+    // Get all descendant decks (including self)
+    const descendantDecks = database
+      .query<Deck, [string, string]>(
+        "SELECT * FROM decks WHERE deck_path = ? OR deck_path LIKE ?"
+      )
+      .all(deck.deck_path, `${deck.deck_path}::%`);
+
+    const deckIds = descendantDecks.map((d) => d.id);
+
+    if (deckIds.length === 0) {
+      return {
+        ...deck,
+        stats: {
+          totalCards: 0,
+          newCards: 0,
+          learningCards: 0,
+          dueCards: 0,
+          progress: 0,
+        },
+      };
+    }
+
+    const placeholders = deckIds.map(() => "?").join(",");
+
+    const totalCards =
+      database
+        .query<{ count: number }, any[]>(
+          `SELECT COUNT(*) as count FROM cards WHERE deck_id IN (${placeholders})`
+        )
+        .get(...deckIds)?.count || 0;
+
+    const newCards =
+      database
+        .query<{ count: number }, any[]>(
+          `SELECT COUNT(*) as count FROM cards WHERE deck_id IN (${placeholders}) AND state = 0`
+        )
+        .get(...deckIds)?.count || 0;
+
+    const learningCards =
+      database
+        .query<{ count: number }, any[]>(
+          `SELECT COUNT(*) as count FROM cards WHERE deck_id IN (${placeholders}) AND state IN (1, 3)`
+        )
+        .get(...deckIds)?.count || 0;
+
+    const dueCards =
+      database
+        .query<{ count: number }, any[]>(
+          `SELECT COUNT(*) as count FROM cards WHERE deck_id IN (${placeholders}) AND due <= ?`
+        )
+        .get(...deckIds, currentTime)?.count || 0;
+
+    const progress =
+      totalCards > 0
+        ? Math.round(((totalCards - newCards) / totalCards) * 100)
+        : 0;
+
+    return {
+      ...deck,
+      stats: {
+        totalCards,
+        newCards,
+        learningCards,
+        dueCards,
+        progress,
+      },
+    };
+  });
+
+  return c.json(decksWithStats);
 });
 
 // Get deck by ID
@@ -51,9 +128,89 @@ app.get("/decks/:id", (c) => {
   return c.json(deck);
 });
 
+// Get deck stats (including children)
+app.get("/decks/:id/stats", (c) => {
+  const id = c.req.param("id");
+  const deck = database
+    .query<Deck, [string]>("SELECT * FROM decks WHERE id = ?")
+    .get(id);
+
+  if (!deck) {
+    return c.json({ error: "Deck not found" }, 404);
+  }
+
+  // Get all descendant decks (including self)
+  const descendantDecks = database
+    .query<Deck, any[]>(
+      "SELECT * FROM decks WHERE deck_path = ? OR deck_path LIKE ?"
+    )
+    .all(deck.deck_path, `${deck.deck_path}::%`);
+
+  const deckIds = descendantDecks.map((d) => d.id);
+
+  if (deckIds.length === 0) {
+    return c.json({
+      totalCards: 0,
+      newCards: 0,
+      learningCards: 0,
+      dueCards: 0,
+      progress: 0,
+    });
+  }
+
+  // Get card statistics
+  const placeholders = deckIds.map(() => "?").join(",");
+  const currentTime = now();
+
+  const totalCards =
+    database
+      .query<{ count: number }, any[]>(
+        `SELECT COUNT(*) as count FROM cards WHERE deck_id IN (${placeholders})`
+      )
+      .get(...deckIds)?.count || 0;
+
+  const newCards =
+    database
+      .query<{ count: number }, any[]>(
+        `SELECT COUNT(*) as count FROM cards WHERE deck_id IN (${placeholders}) AND state = 0`
+      )
+      .get(...deckIds)?.count || 0;
+
+  const learningCards =
+    database
+      .query<{ count: number }, any[]>(
+        `SELECT COUNT(*) as count FROM cards WHERE deck_id IN (${placeholders}) AND state IN (1, 3)`
+      )
+      .get(...deckIds)?.count || 0;
+
+  const dueCards =
+    database
+      .query<{ count: number }, any[]>(
+        `SELECT COUNT(*) as count FROM cards WHERE deck_id IN (${placeholders}) AND due <= ?`
+      )
+      .get(...deckIds, currentTime)?.count || 0;
+
+  const progress =
+    totalCards > 0
+      ? Math.round(((totalCards - newCards) / totalCards) * 100)
+      : 0;
+
+  return c.json({
+    totalCards,
+    newCards,
+    learningCards,
+    dueCards,
+    progress,
+  });
+});
+
 // Create deck
 app.post("/decks", async (c) => {
-  const body = await c.req.json<{ name: string; description?: string }>();
+  const body = await c.req.json<{
+    name: string;
+    description?: string;
+    parent_id?: string;
+  }>();
 
   // TODO: Get user_id from auth session
   const userId = "demo-user";
@@ -61,11 +218,32 @@ app.post("/decks", async (c) => {
   const id = generateId();
   const timestamp = now();
 
+  // Calculate deck_path
+  let deckPath = body.name;
+  if (body.parent_id) {
+    const parent = database
+      .query<Deck, [string]>("SELECT * FROM decks WHERE id = ?")
+      .get(body.parent_id);
+
+    if (parent) {
+      deckPath = `${parent.deck_path}::${body.name}`;
+    }
+  }
+
   database
     .query(
-      "INSERT INTO decks (id, user_id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+      "INSERT INTO decks (id, user_id, name, description, parent_id, deck_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
     )
-    .run(id, userId, body.name, body.description || null, timestamp, timestamp);
+    .run(
+      id,
+      userId,
+      body.name,
+      body.description || null,
+      body.parent_id || null,
+      deckPath,
+      timestamp,
+      timestamp
+    );
 
   const deck = database
     .query<Deck, [string]>("SELECT * FROM decks WHERE id = ?")
@@ -123,17 +301,62 @@ app.delete("/decks/:id", (c) => {
 // Cards API
 // ============================================
 
-// Get cards in a deck
+// Get cards in a deck (with pagination and include children option)
 app.get("/decks/:deckId/cards", (c) => {
   const deckId = c.req.param("deckId");
+  const page = parseInt(c.req.query("page") || "1");
+  const limit = parseInt(c.req.query("limit") || "20");
+  const includeChildren = c.req.query("includeChildren") === "true";
+  const offset = (page - 1) * limit;
 
+  // Get deck
+  const deck = database
+    .query<Deck, [string]>("SELECT * FROM decks WHERE id = ?")
+    .get(deckId);
+
+  if (!deck) {
+    return c.json({ error: "Deck not found" }, 404);
+  }
+
+  let deckIds = [deckId];
+
+  if (includeChildren) {
+    // Get all descendant decks
+    const descendantDecks = database
+      .query<Deck, any[]>(
+        "SELECT * FROM decks WHERE deck_path = ? OR deck_path LIKE ?"
+      )
+      .all(deck.deck_path, `${deck.deck_path}::%`);
+
+    deckIds = descendantDecks.map((d) => d.id);
+  }
+
+  const placeholders = deckIds.map(() => "?").join(",");
+
+  // Get total count
+  const totalCount =
+    database
+      .query<{ count: number }, any[]>(
+        `SELECT COUNT(*) as count FROM cards WHERE deck_id IN (${placeholders})`
+      )
+      .get(...deckIds)?.count || 0;
+
+  // Get paginated cards
   const cards = database
-    .query<Card, [string]>(
-      "SELECT * FROM cards WHERE deck_id = ? ORDER BY created_at DESC"
+    .query<Card, any[]>(
+      `SELECT * FROM cards WHERE deck_id IN (${placeholders}) ORDER BY created_at DESC LIMIT ? OFFSET ?`
     )
-    .all(deckId);
+    .all(...deckIds, limit, offset);
 
-  return c.json(cards);
+  return c.json({
+    cards,
+    pagination: {
+      page,
+      limit,
+      total: totalCount,
+      totalPages: Math.ceil(totalCount / limit),
+    },
+  });
 });
 
 // Get card by ID
@@ -431,32 +654,91 @@ app.post("/import/apkg", async (c) => {
     let decksImported = 0;
     let cardsImported = 0;
 
-    // Import decks
+    // Import decks - handle hierarchical deck names
     const deckIdMap = new Map<number, string>(); // Map Anki deck ID to our deck ID
-    for (const [ankiDeckId, ankiDeck] of decks.entries()) {
+    const deckPathMap = new Map<string, string>(); // Map deck_path to our deck ID
+
+    // Sort decks by hierarchy depth (parents before children)
+    const sortedDecks = Array.from(decks.entries()).sort((a, b) => {
+      const depthA = a[1].name.split("::").length;
+      const depthB = b[1].name.split("::").length;
+      return depthA - depthB;
+    });
+
+    for (const [ankiDeckId, ankiDeck] of sortedDecks) {
       // Skip default deck
       if (ankiDeckId === 1 || ankiDeck.name === "Default") {
         continue;
       }
 
       try {
+        const deckPath = ankiDeck.name; // Full path like "日本史一問一答::02中世::09江戸時代"
+        const parts = deckPath.split("::");
+        const deckName = parts[parts.length - 1]; // Just the last part
+
+        let parentId: string | null = null;
+
+        // If this is a child deck, find or create parent
+        if (parts.length > 1) {
+          const parentPath = parts.slice(0, -1).join("::");
+          parentId = deckPathMap.get(parentPath) || null;
+
+          // If parent doesn't exist, create it first
+          if (!parentId) {
+            const parentName = parts[parts.length - 2];
+            const newParentId = generateId();
+            const timestamp = now();
+
+            // Determine grandparent path
+            let grandparentPath = "";
+            if (parts.length > 2) {
+              grandparentPath = parts.slice(0, -2).join("::");
+            }
+            const grandparentId = grandparentPath
+              ? deckPathMap.get(grandparentPath) || null
+              : null;
+
+            database
+              .query(
+                "INSERT INTO decks (id, user_id, name, description, parent_id, deck_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+              )
+              .run(
+                newParentId,
+                userId,
+                parentName,
+                null,
+                grandparentId,
+                parentPath,
+                timestamp,
+                timestamp
+              );
+
+            deckPathMap.set(parentPath, newParentId);
+            parentId = newParentId;
+            decksImported++;
+          }
+        }
+
         const newDeckId = generateId();
         const timestamp = now();
 
         database
           .query(
-            "INSERT INTO decks (id, user_id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+            "INSERT INTO decks (id, user_id, name, description, parent_id, deck_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
           )
           .run(
             newDeckId,
             userId,
-            ankiDeck.name,
+            deckName,
             ankiDeck.desc || null,
+            parentId,
+            deckPath,
             timestamp,
             timestamp
           );
 
         deckIdMap.set(ankiDeckId, newDeckId);
+        deckPathMap.set(deckPath, newDeckId);
         decksImported++;
       } catch (err) {
         errors.push(`Failed to import deck "${ankiDeck.name}": ${err}`);

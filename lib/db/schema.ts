@@ -17,9 +17,12 @@ CREATE TABLE IF NOT EXISTS decks (
   user_id TEXT NOT NULL,
   name TEXT NOT NULL,
   description TEXT,
+  parent_id TEXT,
+  deck_path TEXT NOT NULL,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (parent_id) REFERENCES decks(id) ON DELETE CASCADE
 );
 
 -- Cards table (FSRS compatible)
@@ -92,6 +95,8 @@ export interface Deck {
   user_id: string;
   name: string;
   description: string | null;
+  parent_id: string | null;
+  deck_path: string;
   created_at: number;
   updated_at: number;
 }

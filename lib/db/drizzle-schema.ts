@@ -16,13 +16,17 @@ export const users = sqliteTable("users", {
 });
 
 // Decks table
-export const decks = sqliteTable("decks", {
+export const decks: any = sqliteTable("decks", {
   id: text("id").primaryKey(),
   user_id: text("user_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   description: text("description"),
+  parent_id: text("parent_id").references((): any => decks.id, {
+    onDelete: "cascade",
+  }),
+  deck_path: text("deck_path").notNull(),
   created_at: integer("created_at", { mode: "timestamp" }).notNull(),
   updated_at: integer("updated_at", { mode: "timestamp" }).notNull(),
 });

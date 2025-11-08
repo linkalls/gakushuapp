@@ -29,12 +29,19 @@ export default function StudyPage() {
   }, [deckId]);
 
   const fetchDueCards = () => {
-    const url = deckId ? `/api/decks/${deckId}/cards` : "/api/cards/due";
+    let url = "/api/cards/due";
+
+    if (deckId) {
+      // デッキ指定時は子デッキも含める
+      url = `/api/decks/${deckId}/cards?includeChildren=true&limit=1000`;
+    }
 
     fetch(url)
       .then((res) => res.json())
       .then((data) => {
-        const dueCards = data.filter((card: Card) => card.due <= Date.now());
+        // ページネーション対応の場合とそうでない場合を処理
+        const allCards = data.cards || data;
+        const dueCards = allCards.filter((card: Card) => card.due <= Date.now());
         setCards(dueCards);
         setLoading(false);
         if (dueCards.length === 0) {

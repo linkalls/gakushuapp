@@ -1,11 +1,13 @@
 import { Database } from "bun:sqlite";
+import { drizzle } from "drizzle-orm/bun-sqlite";
 import path from "path";
-import { createTablesSQL } from "./schema";
+import * as schema from "./drizzle-schema";
 
-let db: Database | null = null;
+let sqliteDb: Database | null = null;
+let drizzleDb: ReturnType<typeof drizzle> | null = null;
 
 export function getDatabase(): Database {
-  if (db) return db;
+  if (sqliteDb) return sqliteDb;
 
   // Database file location
   const dbPath =
@@ -18,36 +20,56 @@ export function getDatabase(): Database {
   }
 
   // Initialize database
-  db = new Database(dbPath, { create: true });
+  sqliteDb = new Database(dbPath, { create: true });
 
   // Enable foreign keys
-  db.run("PRAGMA foreign_keys = ON");
+  sqliteDb.run("PRAGMA foreign_keys = ON");
 
-  // Create tables
-  db.run(createTablesSQL);
+  // Initialize Drizzle
+  drizzleDb = drizzle(sqliteDb, { schema });
 
-  // Insert demo user if not exists
-  const demoUserExists = db
+  // Insert demo user if not exists (using raw SQL for initial setup)
+  const demoUserExists = sqliteDb
     .query("SELECT COUNT(*) as count FROM users WHERE id = ?")
-    .get("demo-user") as { count: number };
+    .get("demo-user") as { count: number } | undefined;
 
-  if (demoUserExists.count === 0) {
+  if (!demoUserExists || demoUserExists.count === 0) {
     const timestamp = Date.now();
-    db.query(
-      "INSERT INTO users (id, email, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
-    ).run("demo-user", "demo@gakushu.app", "Demo User", timestamp, timestamp);
-    console.log("✅ Demo user created");
+    try {
+      sqliteDb
+        .query(
+          "INSERT INTO users (id, email, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
+        )
+        .run(
+          "demo-user",
+          "demo@gakushu.app",
+          "Demo User",
+          timestamp,
+          timestamp
+        );
+      console.log("✅ Demo user created");
+    } catch (e) {
+      // User might already exist, ignore
+    }
   }
 
   console.log(`✅ Database initialized at: ${dbPath}`);
 
-  return db;
+  return sqliteDb;
+}
+
+export function getDrizzle() {
+  if (!drizzleDb) {
+    getDatabase(); // Initialize if not already done
+  }
+  return drizzleDb!;
 }
 
 export function closeDatabase() {
-  if (db) {
-    db.close();
-    db = null;
+  if (sqliteDb) {
+    sqliteDb.close();
+    sqliteDb = null;
+    drizzleDb = null;
   }
 }
 
@@ -62,3 +84,4 @@ export function now(): number {
 
 // Initialize database on import
 export const database = getDatabase();
+export const drizzleDatabase = getDrizzle();

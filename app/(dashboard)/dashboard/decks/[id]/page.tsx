@@ -8,6 +8,8 @@ interface Deck {
   id: string;
   name: string;
   description: string | null;
+  deck_path: string;
+  parent_id: string | null;
 }
 
 interface Card {
@@ -18,6 +20,16 @@ interface Card {
   due: number;
 }
 
+interface PaginatedResponse {
+  cards: Card[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
 export default function DeckDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -25,14 +37,23 @@ export default function DeckDetailPage() {
 
   const [deck, setDeck] = useState<Deck | null>(null);
   const [cards, setCards] = useState<Card[]>([]);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 20,
+    total: 0,
+    totalPages: 0,
+  });
   const [loading, setLoading] = useState(true);
   const [showNewCardForm, setShowNewCardForm] = useState(false);
   const [newCard, setNewCard] = useState({ front: "", back: "" });
 
   useEffect(() => {
     fetchDeck();
-    fetchCards();
   }, [deckId]);
+
+  useEffect(() => {
+    fetchCards();
+  }, [deckId, pagination.page]);
 
   const fetchDeck = () => {
     fetch(`/api/decks/${deckId}`)
@@ -42,19 +63,24 @@ export default function DeckDetailPage() {
   };
 
   const fetchCards = () => {
-    fetch(`/api/decks/${deckId}/cards`)
+    const params = new URLSearchParams({
+      page: pagination.page.toString(),
+      limit: pagination.limit.toString(),
+      includeChildren: "true", // 常に子デッキも含める
+    });
+
+    fetch(`/api/decks/${deckId}/cards?${params}`)
       .then((res) => res.json())
-      .then((data) => {
-        setCards(data);
+      .then((data: PaginatedResponse) => {
+        setCards(data.cards);
+        setPagination(data.pagination);
         setLoading(false);
       })
       .catch((error) => {
         console.error("Failed to fetch cards:", error);
         setLoading(false);
       });
-  };
-
-  const createCard = async () => {
+  }; const createCard = async () => {
     if (!newCard.front.trim() || !newCard.back.trim()) return;
 
     try {
@@ -121,13 +147,16 @@ export default function DeckDetailPage() {
             <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-100">
               {deck.name}
             </h1>
+            <p className="text-xs text-zinc-500 dark:text-zinc-500 mt-1">
+              {deck.deck_path}
+            </p>
             {deck.description && (
               <p className="text-zinc-600 dark:text-zinc-400 mt-2">
                 {deck.description}
               </p>
             )}
             <p className="text-sm text-zinc-500 dark:text-zinc-500 mt-2">
-              {cards.length} カード
+              {pagination.total} カード（サブデッキ含む）
             </p>
           </div>
           <div className="flex gap-3">
@@ -212,40 +241,64 @@ export default function DeckDetailPage() {
           </button>
         </div>
       ) : (
-        <div className="space-y-4">
-          {cards.map((card) => (
-            <div
-              key={card.id}
-              className="bg-white dark:bg-zinc-900 rounded-xl p-6 shadow-sm border border-zinc-200 dark:border-zinc-800"
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex-1 space-y-3">
-                  <div>
-                    <div className="text-xs text-zinc-500 dark:text-zinc-500 mb-1">表</div>
-                    <div className="text-zinc-900 dark:text-zinc-100">{card.front}</div>
+        <>
+          <div className="space-y-4">
+            {cards.map((card) => (
+              <div
+                key={card.id}
+                className="bg-white dark:bg-zinc-900 rounded-xl p-6 shadow-sm border border-zinc-200 dark:border-zinc-800"
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex-1 space-y-3">
+                    <div>
+                      <div className="text-xs text-zinc-500 dark:text-zinc-500 mb-1">表</div>
+                      <div className="text-zinc-900 dark:text-zinc-100">{card.front}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-zinc-500 dark:text-zinc-500 mb-1">裏</div>
+                      <div className="text-zinc-600 dark:text-zinc-400">{card.back}</div>
+                    </div>
+                    <div className="flex gap-4 text-xs text-zinc-500 dark:text-zinc-500">
+                      <span>復習回数: {card.reps}</span>
+                      <span>•</span>
+                      <span>
+                        次回: {new Date(card.due).toLocaleDateString('ja-JP')}
+                      </span>
+                    </div>
                   </div>
-                  <div>
-                    <div className="text-xs text-zinc-500 dark:text-zinc-500 mb-1">裏</div>
-                    <div className="text-zinc-600 dark:text-zinc-400">{card.back}</div>
-                  </div>
-                  <div className="flex gap-4 text-xs text-zinc-500 dark:text-zinc-500">
-                    <span>復習回数: {card.reps}</span>
-                    <span>•</span>
-                    <span>
-                      次回: {new Date(card.due).toLocaleDateString('ja-JP')}
-                    </span>
-                  </div>
+                  <button
+                    onClick={() => deleteCard(card.id)}
+                    className="text-red-500 hover:text-red-600 text-sm ml-4"
+                  >
+                    削除
+                  </button>
                 </div>
-                <button
-                  onClick={() => deleteCard(card.id)}
-                  className="text-red-500 hover:text-red-600 text-sm ml-4"
-                >
-                  削除
-                </button>
               </div>
+            ))}
+          </div>
+
+          {pagination.totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 mt-8">
+              <button
+                onClick={() => setPagination({ ...pagination, page: pagination.page - 1 })}
+                disabled={pagination.page === 1}
+                className="px-4 py-2 bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 rounded-lg font-medium hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                前へ
+              </button>
+              <span className="text-sm text-zinc-600 dark:text-zinc-400">
+                {pagination.page} / {pagination.totalPages}
+              </span>
+              <button
+                onClick={() => setPagination({ ...pagination, page: pagination.page + 1 })}
+                disabled={pagination.page === pagination.totalPages}
+                className="px-4 py-2 bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 rounded-lg font-medium hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                次へ
+              </button>
             </div>
-          ))}
-        </div>
+          )}
+        </>
       )}
     </div>
   );
