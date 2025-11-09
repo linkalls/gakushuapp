@@ -25,11 +25,25 @@ export default function StudyPage() {
   const [finished, setFinished] = useState(false);
   const [studyStartTime, setStudyStartTime] = useState<number>(0);
   const [elapsedTime, setElapsedTime] = useState<number>(0);
-  const [reviewedCount, setReviewedCount] = useState<number>(0);
 
   useEffect(() => {
     fetchDueCards();
     setStudyStartTime(Date.now());
+
+    return () => {
+      if (studyStartTime > 0 && currentIndex > 0) {
+        const duration = Math.floor((Date.now() - studyStartTime) / 1000);
+        fetch("/api/study-sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            deckId,
+            duration,
+            cardsReviewed: currentIndex,
+          }),
+        });
+      }
+    };
   }, [deckId]);
 
   // Timer effect
@@ -92,9 +106,6 @@ export default function StudyPage() {
         }),
       });
 
-      // Increment reviewed count
-      setReviewedCount((prev) => prev + 1);
-
       // Move to next card
       if (currentIndex + 1 >= cards.length) {
         setFinished(true);
@@ -112,9 +123,6 @@ export default function StudyPage() {
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
-
-  const newCardsCount = cards.filter((card) => card.reps === 0).length;
-  const reviewCardsCount = cards.filter((card) => card.reps > 0).length;
 
   if (loading) {
     return (
@@ -149,6 +157,12 @@ export default function StudyPage() {
   }
 
   const currentCard = cards[currentIndex];
+  const reviewedCount = currentIndex;
+  const newCardsShown = cards.slice(0, currentIndex).filter((c) => c.reps === 0).length;
+  const newCardsCount = cards.filter((c) => c.reps === 0).length;
+  const reviewCardsCount = cards.length - newCardsCount;
+  const newCardsLeft = newCardsCount - newCardsShown;
+  const reviewCardsLeft = reviewCardsCount - (reviewedCount - newCardsShown);
 
   return (
     <div className="max-w-2xl mx-auto space-y-8">
@@ -161,13 +175,24 @@ export default function StudyPage() {
           </p>
         </div>
 
-        {/* Stats in top right - matching the image */}
-        <div className="flex items-center gap-4 text-lg font-medium text-zinc-900 dark:text-zinc-100">
-          <span className="text-zinc-900 dark:text-zinc-100">{reviewedCount}</span>
-          <span className="text-zinc-400">+</span>
-          <span className="text-blue-600 dark:text-blue-400">{newCardsCount - reviewedCount > 0 ? newCardsCount - reviewedCount : 0}</span>
-          <span className="text-zinc-400">+</span>
-          <span className="text-green-600 dark:text-green-400">{cards.length - currentIndex - 1}</span>
+        {/* Stats in top right */}
+        <div className="text-right">
+          <div className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
+            {formatTime(elapsedTime)}
+          </div>
+          <div className="flex items-center gap-4 text-sm font-medium text-zinc-900 dark:text-zinc-100 mt-1">
+            <span className="text-blue-600 dark:text-blue-400" title="New Cards Left">
+              {newCardsLeft}
+            </span>
+            <span className="text-zinc-400">+</span>
+            <span className="text-green-600 dark:text-green-400" title="Review Cards Left">
+              {reviewCardsLeft}
+            </span>
+            <span className="text-zinc-400">=</span>
+            <span className="text-zinc-900 dark:text-zinc-100" title="Total Left">
+              {cards.length - currentIndex}
+            </span>
+          </div>
         </div>
       </div>
 
