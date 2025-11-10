@@ -1,9 +1,7 @@
 "use client";
 
 import { AuthGuard } from "@/components/auth-guard";
-import { signOut, useSession } from "@/lib/auth-client";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,8 +10,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Button } from "@/components/ui/button";
+import { signOut, useSession } from "@/lib/auth-client";
 import { User as UserIcon } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 export default function DashboardLayout({
   children,
@@ -53,6 +53,12 @@ export default function DashboardLayout({
                     className="text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
                   >
                     デッキ
+                  </Link>
+                  <Link
+                    href="/dashboard/ai"
+                    className="text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
+                  >
+                    AI生成
                   </Link>
                   <Link
                     href="/dashboard/ranking"

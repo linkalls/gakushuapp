@@ -23,12 +23,15 @@
     "jszip": "^3.10.1",
     "lucide-react": "^0.553.0",
     "next": "16.0.1",
+    "openai": "^6.8.1",
     "oslo": "^1.2.1",
     "react": "19.2.0",
     "react-chartjs-2": "^5.3.1",
     "react-dom": "19.2.0",
+    "sharp": "^0.34.5",
     "tailwind-merge": "^3.3.1",
-    "ts-fsrs": "^5.2.3"
+    "ts-fsrs": "^5.2.3",
+    "zod": "^4.1.12"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

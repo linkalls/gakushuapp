@@ -1,8 +1,8 @@
 import { auth } from "@/lib/auth";
 import { db, generateId, now } from "@/lib/db/drizzle";
 import * as schema from "@/lib/db/drizzle-schema";
-import { parseApkgFile, type ImportResult } from "@/lib/utils/apkg-import";
 import { generateApkg } from "@/lib/utils/apkg-export";
+import { parseApkgFile, type ImportResult } from "@/lib/utils/apkg-import";
 import { getInitialCardState, Rating, reviewCard } from "@/lib/utils/fsrs";
 import {
   and,
@@ -231,7 +231,11 @@ app.put("/decks/:id/share", async (c) => {
 
   await db.update(decks).set(updateData).where(eq(decks.id, id));
 
-  const updatedDeck = await db.select().from(decks).where(eq(decks.id, id)).get();
+  const updatedDeck = await db
+    .select()
+    .from(decks)
+    .where(eq(decks.id, id))
+    .get();
 
   return c.json(updatedDeck);
 });
@@ -476,8 +480,8 @@ app.get("/decks/:id/export", async (c) => {
       )
     )
     .all();
-  
-  const childDecks = descendantDecks.filter(d => d.id !== deck.id);
+
+  const childDecks = descendantDecks.filter((d) => d.id !== deck.id);
   const deckIds = descendantDecks.map((d) => d.id);
 
   // Get all cards in these decks
@@ -489,13 +493,12 @@ app.get("/decks/:id/export", async (c) => {
 
   try {
     const apkgBuffer = await generateApkg(deck, childDecks, allCards);
-    const filename = `${deck.name.replace(/[^a-z0-9]/gi, '_')}.apkg`;
+    const filename = `${deck.name.replace(/[^a-z0-9]/gi, "_")}.apkg`;
 
-    c.header("Content-Type", "application/zip");
-    c.header("Content-Disposition", `attachment; filename="${filename}"`);
-
-    return c.body(apkgBuffer);
-
+    return c.newResponse(new Uint8Array(apkgBuffer), 200, {
+      "Content-Type": "application/zip",
+      "Content-Disposition": `attachment; filename="${filename}"`,
+    });
   } catch (error) {
     console.error("Failed to generate .apkg file:", error);
     return c.json({ error: "Failed to generate package." }, 500);
@@ -1600,6 +1603,487 @@ app.put("/profile", async (c) => {
     .get();
 
   return c.json(updatedUser);
+});
+
+// ============================================
+// AI Generation API
+// ============================================
+import { aiGenerations } from "@/lib/db/schemas/extended-schema";
+import {
+  checkAIUsageLimit,
+  generateCardsFromImage,
+  generateCardsFromPDF,
+  generateCardsFromText,
+} from "@/lib/utils/ai-generation";
+
+// Generate cards from text
+app.post("/ai/generate/text", async (c) => {
+  const userSession = await getUserSession(c.req.raw.headers);
+  if (!userSession) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  const userId = userSession.userId;
+
+  // Get user info for usage check
+  const user = await db.select().from(users).where(eq(users.id, userId)).get();
+  if (!user) {
+    return c.json({ error: "User not found" }, 404);
+  }
+
+  // Check AI usage limit
+  const usageCheck = checkAIUsageLimit(
+    user.plan,
+    user.aiUsageCount,
+    user.aiUsageResetAt
+  );
+
+  if (!usageCheck.allowed) {
+    return c.json(
+      { error: "AI usage limit reached. Upgrade to Pro for unlimited access." },
+      429
+    );
+  }
+
+  const body = await c.req.json();
+  const { text, deckId, count = 10 } = body;
+
+  if (!text || !deckId) {
+    return c.json({ error: "Missing required fields" }, 400);
+  }
+
+  const generationId = generateId();
+
+  try {
+    // Create generation record
+    await db.insert(aiGenerations).values({
+      id: generationId,
+      userId,
+      deckId,
+      type: "text",
+      inputContent: text.substring(0, 1000), // 最初の1000文字のみ保存
+      cardsGenerated: 0,
+      status: "pending",
+      createdAt: new Date(),
+    });
+
+    // Generate cards
+    const generatedCards = await generateCardsFromText(text, count);
+
+    // Insert cards into database
+    const initialState = getInitialCardState();
+    const timestamp = Date.now();
+
+    for (const card of generatedCards) {
+      const cardId = generateId();
+      await db.insert(cards).values({
+        id: cardId,
+        deckId,
+        front: card.front,
+        back: card.back,
+        due: initialState.due || timestamp,
+        stability: initialState.stability || 0,
+        difficulty: initialState.difficulty || 0,
+        elapsedDays: initialState.elapsedDays || 0,
+        scheduledDays: initialState.scheduledDays || 0,
+        reps: initialState.reps || 0,
+        lapses: initialState.lapses || 0,
+        state: initialState.state || 0,
+        lastReview: null,
+        createdAt: new Date(timestamp),
+        updatedAt: new Date(timestamp),
+      });
+    }
+
+    // Update generation record
+    await db
+      .update(aiGenerations)
+      .set({
+        cardsGenerated: generatedCards.length,
+        status: "completed",
+      })
+      .where(eq(aiGenerations.id, generationId));
+
+    // Update user AI usage count
+    const now = Date.now();
+    const oneMonth = 30 * 24 * 60 * 60 * 1000;
+    const shouldReset = now - user.aiUsageResetAt > oneMonth;
+
+    await db
+      .update(users)
+      .set({
+        aiUsageCount: shouldReset ? 1 : user.aiUsageCount + 1,
+        aiUsageResetAt: shouldReset ? now : user.aiUsageResetAt,
+      })
+      .where(eq(users.id, userId));
+
+    return c.json({
+      generationId,
+      cardsGenerated: generatedCards.length,
+      remaining: usageCheck.remaining,
+    });
+  } catch (error) {
+    // Update generation record with error
+    await db
+      .update(aiGenerations)
+      .set({
+        status: "failed",
+        errorMessage: error instanceof Error ? error.message : "Unknown error",
+      })
+      .where(eq(aiGenerations.id, generationId));
+
+    return c.json(
+      {
+        error: "Failed to generate cards",
+        message: error instanceof Error ? error.message : "Unknown error",
+      },
+      500
+    );
+  }
+});
+
+// Generate cards from PDF
+app.post("/ai/generate/pdf", async (c) => {
+  console.log("[API-PDF] Request received");
+
+  const userSession = await getUserSession(c.req.raw.headers);
+  if (!userSession) {
+    console.log("[API-PDF] Unauthorized - no session");
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  const userId = userSession.userId;
+  console.log("[API-PDF] User ID:", userId);
+
+  // Get user info for usage check
+  const user = await db.select().from(users).where(eq(users.id, userId)).get();
+  if (!user) {
+    console.log("[API-PDF] User not found");
+    return c.json({ error: "User not found" }, 404);
+  }
+
+  // Check AI usage limit
+  const usageCheck = checkAIUsageLimit(
+    user.plan,
+    user.aiUsageCount,
+    user.aiUsageResetAt
+  );
+
+  if (!usageCheck.allowed) {
+    console.log("[API-PDF] Usage limit reached");
+    return c.json(
+      { error: "AI usage limit reached. Upgrade to Pro for unlimited access." },
+      429
+    );
+  }
+
+  console.log("[API-PDF] Parsing form data...");
+  const formData = await c.req.formData();
+  const file = formData.get("file") as File;
+  const deckId = formData.get("deckId") as string;
+  const count = parseInt(formData.get("count") as string) || 10;
+
+  console.log("[API-PDF] Form data:", {
+    hasFile: !!file,
+    fileName: file?.name,
+    fileSize: file?.size,
+    deckId,
+    count,
+  });
+
+  if (!file || !deckId) {
+    console.log("[API-PDF] Missing required fields");
+    return c.json({ error: "Missing required fields" }, 400);
+  }
+
+  const generationId = generateId();
+  console.log("[API-PDF] Generation ID:", generationId);
+
+  try {
+    // Create generation record
+    console.log("[API-PDF] Creating generation record...");
+    await db.insert(aiGenerations).values({
+      id: generationId,
+      userId,
+      deckId,
+      type: "pdf",
+      inputFileName: file.name,
+      cardsGenerated: 0,
+      status: "pending",
+    });
+
+    // Generate cards
+    console.log("[API-PDF] Calling generateCardsFromPDF...");
+    const generatedCards = await generateCardsFromPDF(file, count);
+    console.log("[API-PDF] Cards generated:", generatedCards.length);
+
+    // Insert cards into database
+    console.log("[API-PDF] Inserting cards into database...");
+    const initialState = getInitialCardState();
+    const timestamp = Date.now();
+
+    for (const card of generatedCards) {
+      const cardId = generateId();
+      await db.insert(cards).values({
+        id: cardId,
+        deckId,
+        front: card.front,
+        back: card.back,
+        due: initialState.due || timestamp,
+        stability: initialState.stability || 0,
+        difficulty: initialState.difficulty || 0,
+        elapsedDays: initialState.elapsedDays || 0,
+        scheduledDays: initialState.scheduledDays || 0,
+        reps: initialState.reps || 0,
+        lapses: initialState.lapses || 0,
+        state: initialState.state || 0,
+        lastReview: null,
+        createdAt: new Date(timestamp),
+        updatedAt: new Date(timestamp),
+      });
+    }
+    console.log("[API-PDF] Cards inserted successfully");
+
+    // Update generation record
+    console.log("[API-PDF] Updating generation record...");
+    await db
+      .update(aiGenerations)
+      .set({
+        cardsGenerated: generatedCards.length,
+        status: "completed",
+      })
+      .where(eq(aiGenerations.id, generationId));
+
+    // Update user AI usage count
+    const now = Date.now();
+    const oneMonth = 30 * 24 * 60 * 60 * 1000;
+    const shouldReset = now - user.aiUsageResetAt > oneMonth;
+
+    console.log("[API-PDF] User data before update:", {
+      aiUsageCount: user.aiUsageCount,
+      aiUsageResetAt: user.aiUsageResetAt,
+      aiUsageResetAtType: typeof user.aiUsageResetAt,
+      shouldReset,
+      now,
+      nowType: typeof now,
+    });
+
+    console.log("[API-PDF] Updating user AI usage...");
+    await db
+      .update(users)
+      .set({
+        aiUsageCount: shouldReset ? 1 : user.aiUsageCount + 1,
+        aiUsageResetAt: shouldReset ? now : user.aiUsageResetAt,
+        updatedAt: new Date(now),
+      })
+      .where(eq(users.id, userId));
+
+    console.log("[API-PDF] Success!");
+    return c.json({
+      generationId,
+      cardsGenerated: generatedCards.length,
+      remaining: usageCheck.remaining,
+    });
+  } catch (error) {
+    console.error("[API-PDF] Error occurred:", error);
+    console.error("[API-PDF] Error details:", {
+      message: error instanceof Error ? error.message : "Unknown error",
+      stack: error instanceof Error ? error.stack : "N/A",
+    });
+
+    // Update generation record with error
+    await db
+      .update(aiGenerations)
+      .set({
+        status: "failed",
+        errorMessage: error instanceof Error ? error.message : "Unknown error",
+      })
+      .where(eq(aiGenerations.id, generationId));
+
+    return c.json(
+      {
+        error: "Failed to generate cards",
+        message: error instanceof Error ? error.message : "Unknown error",
+      },
+      500
+    );
+  }
+});
+
+// Generate cards from image
+app.post("/ai/generate/image", async (c) => {
+  const userSession = await getUserSession(c.req.raw.headers);
+  if (!userSession) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  const userId = userSession.userId;
+
+  // Get user info for usage check
+  const user = await db.select().from(users).where(eq(users.id, userId)).get();
+  if (!user) {
+    return c.json({ error: "User not found" }, 404);
+  }
+
+  // Check AI usage limit
+  const usageCheck = checkAIUsageLimit(
+    user.plan,
+    user.aiUsageCount,
+    user.aiUsageResetAt
+  );
+
+  if (!usageCheck.allowed) {
+    return c.json(
+      { error: "AI usage limit reached. Upgrade to Pro for unlimited access." },
+      429
+    );
+  }
+
+  const formData = await c.req.formData();
+  const file = formData.get("file") as File;
+  const deckId = formData.get("deckId") as string;
+  const count = parseInt(formData.get("count") as string) || 10;
+
+  if (!file || !deckId) {
+    return c.json({ error: "Missing required fields" }, 400);
+  }
+
+  const generationId = generateId();
+
+  try {
+    // Create generation record
+    await db.insert(aiGenerations).values({
+      id: generationId,
+      userId,
+      deckId,
+      type: "image",
+      inputFileName: file.name,
+      cardsGenerated: 0,
+      status: "pending",
+      createdAt: new Date(),
+    });
+
+    // Read image file
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    // Generate cards
+    const generatedCards = await generateCardsFromImage(buffer, count);
+
+    // Insert cards into database
+    const initialState = getInitialCardState();
+    const timestamp = Date.now();
+
+    for (const card of generatedCards) {
+      const cardId = generateId();
+      await db.insert(cards).values({
+        id: cardId,
+        deckId,
+        front: card.front,
+        back: card.back,
+        due: initialState.due || timestamp,
+        stability: initialState.stability || 0,
+        difficulty: initialState.difficulty || 0,
+        elapsedDays: initialState.elapsedDays || 0,
+        scheduledDays: initialState.scheduledDays || 0,
+        reps: initialState.reps || 0,
+        lapses: initialState.lapses || 0,
+        state: initialState.state || 0,
+        lastReview: null,
+        createdAt: new Date(timestamp),
+        updatedAt: new Date(timestamp),
+      });
+    }
+
+    // Update generation record
+    await db
+      .update(aiGenerations)
+      .set({
+        cardsGenerated: generatedCards.length,
+        status: "completed",
+      })
+      .where(eq(aiGenerations.id, generationId));
+
+    // Update user AI usage count
+    const now = Date.now();
+    const oneMonth = 30 * 24 * 60 * 60 * 1000;
+    const shouldReset = now - user.aiUsageResetAt > oneMonth;
+
+    await db
+      .update(users)
+      .set({
+        aiUsageCount: shouldReset ? 1 : user.aiUsageCount + 1,
+        aiUsageResetAt: shouldReset ? now : user.aiUsageResetAt,
+      })
+      .where(eq(users.id, userId));
+
+    return c.json({
+      generationId,
+      cardsGenerated: generatedCards.length,
+      remaining: usageCheck.remaining,
+    });
+  } catch (error) {
+    // Update generation record with error
+    await db
+      .update(aiGenerations)
+      .set({
+        status: "failed",
+        errorMessage: error instanceof Error ? error.message : "Unknown error",
+      })
+      .where(eq(aiGenerations.id, generationId));
+
+    return c.json(
+      {
+        error: "Failed to generate cards",
+        message: error instanceof Error ? error.message : "Unknown error",
+      },
+      500
+    );
+  }
+});
+
+// Get AI generation history
+app.get("/ai/generations", async (c) => {
+  const userSession = await getUserSession(c.req.raw.headers);
+  if (!userSession) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  const userId = userSession.userId;
+
+  const generations = await db
+    .select()
+    .from(aiGenerations)
+    .where(eq(aiGenerations.userId, userId))
+    .orderBy(desc(aiGenerations.createdAt))
+    .limit(50)
+    .all();
+
+  return c.json(generations);
+});
+
+// Get AI usage stats
+app.get("/ai/usage", async (c) => {
+  const userSession = await getUserSession(c.req.raw.headers);
+  if (!userSession) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  const userId = userSession.userId;
+
+  const user = await db.select().from(users).where(eq(users.id, userId)).get();
+  if (!user) {
+    return c.json({ error: "User not found" }, 404);
+  }
+
+  const usageCheck = checkAIUsageLimit(
+    user.plan,
+    user.aiUsageCount,
+    user.aiUsageResetAt
+  );
+
+  return c.json({
+    plan: user.plan,
+    usageCount: user.aiUsageCount,
+    remaining: usageCheck.remaining,
+    resetAt: user.aiUsageResetAt,
+    unlimited: user.plan === "pro",
+  });
 });
 
 export const GET = handle(app);

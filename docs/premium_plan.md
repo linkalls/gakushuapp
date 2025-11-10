@@ -53,6 +53,7 @@ export const users = sqliteTable("users", {
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
   stripeSubscriptionStatus: text("stripe_subscription_status"),
+  stripeCurrentPeriodEnd: integer("stripe_current_period_end"), // サブスクリプション期間の終了日 (Unixタイムスタンプ)
 });
 // ...
 ```
