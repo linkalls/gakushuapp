@@ -4,6 +4,16 @@ import { AuthGuard } from "@/components/auth-guard";
 import { signOut, useSession } from "@/lib/auth-client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
+import { User as UserIcon } from "lucide-react";
 
 export default function DashboardLayout({
   children,
@@ -45,6 +55,12 @@ export default function DashboardLayout({
                     デッキ
                   </Link>
                   <Link
+                    href="/dashboard/ranking"
+                    className="text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
+                  >
+                    ランキング
+                  </Link>
+                  <Link
                     href="/dashboard/tags"
                     className="text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
                   >
@@ -55,12 +71,6 @@ export default function DashboardLayout({
                     className="text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
                   >
                     検索
-                  </Link>
-                  <Link
-                    href="/dashboard/study"
-                    className="text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
-                  >
-                    学習
                   </Link>
                   <Link
                     href="/dashboard/stats"
@@ -77,17 +87,41 @@ export default function DashboardLayout({
                 </div>
               </div>
               <div className="flex items-center gap-4">
-                {session?.user && (
-                  <span className="text-sm text-zinc-600 dark:text-zinc-400">
-                    {session.user.name}
-                  </span>
-                )}
-                <button
-                  onClick={handleLogout}
-                  className="text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
-                >
-                  ログアウト
-                </button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      className="flex items-center gap-2"
+                    >
+                      {session?.user?.image ? (
+                        <img
+                          src={session.user.image}
+                          alt="User avatar"
+                          className="w-6 h-6 rounded-full"
+                        />
+                      ) : (
+                        <UserIcon className="w-5 h-5" />
+                      )}
+                      <span className="hidden sm:inline">
+                        {session?.user?.name}
+                      </span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuLabel>マイアカウント</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => router.push('/dashboard/profile')}>
+                      プロフィール
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => router.push('/dashboard/billing')}>
+                      課金情報
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={handleLogout} className="text-red-500 focus:text-red-500">
+                      ログアウト
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
           </div>

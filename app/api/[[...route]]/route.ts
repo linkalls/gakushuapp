@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { db, generateId, now } from "@/lib/db/drizzle";
 import * as schema from "@/lib/db/drizzle-schema";
 import { parseApkgFile, type ImportResult } from "@/lib/utils/apkg-import";
+import { generateApkg } from "@/lib/utils/apkg-export";
 import { getInitialCardState, Rating, reviewCard } from "@/lib/utils/fsrs";
 import {
   and,
@@ -173,13 +174,98 @@ app.get("/decks", async (c) => {
 // Get deck by ID
 app.get("/decks/:id", async (c) => {
   const id = c.req.param("id");
+  const userSession = await getUserSession(c.req.raw.headers);
+
   const deck = await db.select().from(decks).where(eq(decks.id, id)).get();
 
   if (!deck) {
     return c.json({ error: "Deck not found" }, 404);
   }
 
+  // Public decks can be viewed by anyone
+  if (deck.isPublic) {
+    return c.json(deck);
+  }
+
+  // Private decks can only be viewed by the owner
+  if (!userSession || userSession.userId !== deck.userId) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
   return c.json(deck);
+});
+
+// Share or unshare a deck
+app.put("/decks/:id/share", async (c) => {
+  const id = c.req.param("id");
+  const userSession = await getUserSession(c.req.raw.headers);
+
+  if (!userSession) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const body = await c.req.json<{ is_public: boolean }>();
+
+  const deck = await db.select().from(decks).where(eq(decks.id, id)).get();
+
+  if (!deck) {
+    return c.json({ error: "Deck not found" }, 404);
+  }
+
+  if (deck.userId !== userSession.userId) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  const updateData: {
+    isPublic: boolean;
+    shareId?: string;
+    updatedAt: Date;
+  } = {
+    isPublic: body.is_public,
+    updatedAt: new Date(),
+  };
+
+  if (body.is_public && !deck.shareId) {
+    updateData.shareId = generateId();
+  }
+
+  await db.update(decks).set(updateData).where(eq(decks.id, id));
+
+  const updatedDeck = await db.select().from(decks).where(eq(decks.id, id)).get();
+
+  return c.json(updatedDeck);
+});
+
+// Get shared deck by shareId
+app.get("/decks/shared/:shareId", async (c) => {
+  const shareId = c.req.param("shareId");
+
+  if (!shareId) {
+    return c.json({ error: "Share ID is required" }, 400);
+  }
+
+  const deck = await db
+    .select()
+    .from(decks)
+    .where(eq(decks.shareId, shareId))
+    .get();
+
+  if (!deck || !deck.isPublic) {
+    return c.json({ error: "Deck not found or not public" }, 404);
+  }
+
+  // Optionally, you can also fetch user info to show who the deck belongs to
+  const owner = await db
+    .select({
+      id: users.id,
+      name: users.name,
+      image: users.image,
+    })
+    .from(users)
+    .where(eq(users.id, deck.userId))
+    .get();
+
+  return c.json({ ...deck, owner });
 });
 
 // Get deck stats (including children)
@@ -358,6 +444,62 @@ app.delete("/decks/:id", async (c) => {
   await db.delete(decks).where(eq(decks.id, id));
 
   return c.json({ success: true });
+});
+
+// Export deck as .apkg
+app.get("/decks/:id/export", async (c) => {
+  const id = c.req.param("id");
+  const userSession = await getUserSession(c.req.raw.headers);
+
+  if (!userSession) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const deck = await db.select().from(decks).where(eq(decks.id, id)).get();
+
+  if (!deck) {
+    return c.json({ error: "Deck not found" }, 404);
+  }
+
+  if (deck.userId !== userSession.userId) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  // Get all descendant decks (including self)
+  const descendantDecks = await db
+    .select()
+    .from(decks)
+    .where(
+      or(
+        eq(decks.deckPath, deck.deckPath),
+        like(decks.deckPath, `${deck.deckPath}::%`)
+      )
+    )
+    .all();
+  
+  const childDecks = descendantDecks.filter(d => d.id !== deck.id);
+  const deckIds = descendantDecks.map((d) => d.id);
+
+  // Get all cards in these decks
+  const allCards = await db
+    .select()
+    .from(cards)
+    .where(inArray(cards.deckId, deckIds))
+    .all();
+
+  try {
+    const apkgBuffer = await generateApkg(deck, childDecks, allCards);
+    const filename = `${deck.name.replace(/[^a-z0-9]/gi, '_')}.apkg`;
+
+    c.header("Content-Type", "application/zip");
+    c.header("Content-Disposition", `attachment; filename="${filename}"`);
+
+    return c.body(apkgBuffer);
+
+  } catch (error) {
+    console.error("Failed to generate .apkg file:", error);
+    return c.json({ error: "Failed to generate package." }, 500);
+  }
 });
 
 // ============================================
@@ -1347,6 +1489,83 @@ app.get("/search", async (c) => {
     total: searchResults.length,
     query,
   });
+});
+
+// ============================================
+// Study Sessions API
+// ============================================
+
+app.get("/study-sessions", async (c) => {
+  const userSession = await getUserSession(c.req.raw.headers);
+  if (!userSession) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  const userId = userSession.userId;
+
+  const data = await db
+    .select()
+    .from(schema.studySessions)
+    .where(eq(schema.studySessions.userId, userId))
+    .orderBy(desc(schema.studySessions.createdAt))
+    .all();
+
+  return c.json(data);
+});
+app.post("/study-sessions", async (c) => {
+  const userSession = await getUserSession(c.req.raw.headers);
+  if (!userSession) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  const userId = userSession.userId;
+
+  const body = await c.req.json();
+  const { deckId, duration, cardsReviewed } = body;
+
+  if (!deckId || !duration || !cardsReviewed) {
+    return c.json({ error: "Missing required fields" }, 400);
+  }
+
+  const id = generateId();
+  const timestamp = new Date();
+
+  await db.insert(schema.studySessions).values({
+    id,
+    userId: userId,
+    deckId,
+    duration: Number(duration),
+    cardsReviewed: Number(cardsReviewed),
+    createdAt: timestamp,
+  });
+
+  return c.json({ message: "OK" }, 200);
+});
+
+// ============================================
+// Ranking API
+// ============================================
+
+// Get weekly review ranking
+app.get("/ranking/weekly-reviews", async (c) => {
+  const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+
+  const ranking = await db
+    .select({
+      userId: users.id,
+      userName: users.name,
+      userImage: users.image,
+      reviewCount: count(reviews.id),
+    })
+    .from(reviews)
+    .innerJoin(cards, eq(reviews.cardId, cards.id))
+    .innerJoin(decks, eq(cards.deckId, decks.id))
+    .innerJoin(users, eq(decks.userId, users.id))
+    .where(gte(reviews.reviewTime, oneWeekAgo))
+    .groupBy(users.id, users.name, users.image)
+    .orderBy(desc(count(reviews.id)))
+    .limit(20)
+    .all();
+
+  return c.json(ranking);
 });
 
 export const GET = handle(app);

@@ -23,6 +23,11 @@ export const users = sqliteTable("users", {
     .$defaultFn(() => sql`(unixepoch() * 1000)`)
     .$onUpdateFn(() => sql`(unixepoch() * 1000)`)
     .notNull(),
+  // Stripe fields
+  stripeCustomerId: text("stripe_customer_id").unique(),
+  subscriptionStatus: text("subscription_status"),
+  planId: text("plan_id"),
+  subscriptionEndDate: integer("subscription_end_date", { mode: "timestamp_ms" }),
 });
 
 export const sessions = sqliteTable("sessions", {
@@ -96,6 +101,10 @@ export const decks = sqliteTable("decks", {
     onDelete: "cascade",
   }),
   deckPath: text("deck_path").notNull(),
+  isPublic: integer("is_public", { mode: "boolean" })
+    .default(false)
+    .notNull(),
+  shareId: text("share_id").unique(),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .$defaultFn(() => sql`(unixepoch() * 1000)`)
     .notNull(),
@@ -180,3 +189,5 @@ export const studySessions = sqliteTable("study_sessions", {
     .$defaultFn(() => sql`(unixepoch() * 1000)`)
     .notNull(),
 });
+
+export * from "./schemas/extended-schema";

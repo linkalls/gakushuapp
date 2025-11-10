@@ -10,6 +10,8 @@ interface Deck {
   description: string | null;
   deck_path: string;
   parent_id: string | null;
+  isPublic: boolean;
+  shareId: string | null;
 }
 
 interface Card {
@@ -53,6 +55,7 @@ export default function DeckDetailPage() {
   const [showNewCardForm, setShowNewCardForm] = useState(false);
   const [newCard, setNewCard] = useState({ front: "", back: "", tags: [] as string[] });
   const [availableTags, setAvailableTags] = useState<Tag[]>([]);
+  const [showShareUrl, setShowShareUrl] = useState(false);
 
   useEffect(() => {
     fetchDeck();
@@ -66,7 +69,12 @@ export default function DeckDetailPage() {
   const fetchDeck = () => {
     fetch(`/api/decks/${deckId}`)
       .then((res) => res.json())
-      .then((data) => setDeck(data))
+      .then((data) => {
+        setDeck(data);
+        if (data.isPublic) {
+          setShowShareUrl(true);
+        }
+      })
       .catch((error) => console.error("Failed to fetch deck:", error));
   };
 
@@ -98,7 +106,9 @@ export default function DeckDetailPage() {
         console.error("Failed to fetch cards:", error);
         setLoading(false);
       });
-  }; const createCard = async () => {
+  };
+
+  const createCard = async () => {
     if (!newCard.front.trim() || !newCard.back.trim()) return;
 
     try {
@@ -155,6 +165,44 @@ export default function DeckDetailPage() {
     }
   };
 
+  const handleShare = async () => {
+    try {
+      const res = await fetch(`/api/decks/${deckId}/share`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_public: true }),
+      });
+      if (res.ok) {
+        const updatedDeck = await res.json();
+        setDeck(updatedDeck);
+        setShowShareUrl(true);
+      }
+    } catch (error) {
+      console.error("Failed to share deck:", error);
+    }
+  };
+
+  const handleUnshare = async () => {
+    try {
+      const res = await fetch(`/api/decks/${deckId}/share`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_public: false }),
+      });
+      if (res.ok) {
+        const updatedDeck = await res.json();
+        setDeck(updatedDeck);
+        setShowShareUrl(false);
+      }
+    } catch (error) {
+      console.error("Failed to unshare deck:", error);
+    }
+  };
+
+  const handleExport = () => {
+    window.location.href = `/api/decks/${deckId}/export`;
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -170,6 +218,8 @@ export default function DeckDetailPage() {
       </div>
     );
   }
+
+  const shareUrl = deck.shareId ? `${window.location.origin}/decks/shared/${deck.shareId}` : "";
 
   return (
     <div className="space-y-8">
@@ -210,8 +260,50 @@ export default function DeckDetailPage() {
             >
               ➕ カード追加
             </button>
+            <button
+              onClick={handleExport}
+              className="px-6 py-3 bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 rounded-xl font-medium hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+            >
+              エクスポート
+            </button>
+            {!deck.isPublic ? (
+              <button
+                onClick={handleShare}
+                className="px-6 py-3 bg-blue-500 text-white rounded-xl font-medium hover:bg-blue-600 transition-colors"
+              >
+                共有
+              </button>
+            ) : (
+              <button
+                onClick={handleUnshare}
+                className="px-6 py-3 bg-gray-500 text-white rounded-xl font-medium hover:bg-gray-600 transition-colors"
+              >
+                共有停止
+              </button>
+            )}
           </div>
         </div>
+        {showShareUrl && deck.isPublic && (
+          <div className="mt-4 bg-zinc-100 dark:bg-zinc-800 p-4 rounded-lg">
+            <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">
+              共有リンク
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                readOnly
+                value={shareUrl}
+                className="w-full px-4 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100"
+              />
+              <button
+                onClick={() => navigator.clipboard.writeText(shareUrl)}
+                className="px-4 py-2 bg-zinc-900 dark:bg-zinc-100 text-zinc-50 dark:text-zinc-900 rounded-lg font-medium"
+              >
+                コピー
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {showNewCardForm && (

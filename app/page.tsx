@@ -1,6 +1,40 @@
+"use client";
+
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { signIn } from "@/lib/auth-client";
 
 export default function Home() {
+  const router = useRouter();
+  const [isDemoLoading, setIsDemoLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleDemoLogin = async () => {
+    setIsDemoLoading(true);
+    setError(null);
+    try {
+      const result = await signIn("credentials", {
+        email: "demo@example.com",
+        password: "password123",
+      });
+
+      if (result?.error) {
+        setError(
+          "デモユーザーのログインに失敗しました。ユーザーが存在しないか、パスワードが異なります。"
+        );
+        setIsDemoLoading(false);
+      } else {
+        // signIn should handle the redirect on success
+        router.push("/dashboard");
+      }
+    } catch (error) {
+      console.error("Demo login request failed:", error);
+      setError("予期せぬエラーが発生しました。");
+      setIsDemoLoading(false);
+    }
+  };
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-linear-to-br from-zinc-50 to-zinc-100 dark:from-zinc-950 dark:to-black">
       <main className="flex flex-col items-center justify-center gap-8 px-4 py-16">
@@ -16,22 +50,44 @@ export default function Home() {
           </p>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-4 mt-8">
+        {error && (
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative max-w-md text-center">
+            <strong className="font-bold">エラー: </strong>
+            <span className="block sm:inline">{error}</span>
+          </div>
+        )}
+
+        <div className="flex flex-col sm:flex-row gap-4 mt-4">
           <Link
-            href="/login"
+            href="/signup"
             className="flex h-12 items-center justify-center rounded-full bg-zinc-900 dark:bg-zinc-100 px-8 text-zinc-50 dark:text-zinc-900 font-medium transition-all hover:scale-105 hover:shadow-lg"
           >
-            学習を開始
+            無料で学習を開始
           </Link>
-          <Link
-            href="/login"
-            className="flex h-12 items-center justify-center rounded-full border-2 border-zinc-900 dark:border-zinc-100 px-8 text-zinc-900 dark:text-zinc-100 font-medium transition-all hover:bg-zinc-900 hover:text-zinc-50 dark:hover:bg-zinc-100 dark:hover:text-zinc-900"
+          <button
+            onClick={handleDemoLogin}
+            disabled={isDemoLoading}
+            className="flex h-12 w-full sm:w-auto items-center justify-center rounded-full border-2 border-zinc-900 dark:border-zinc-100 px-8 text-zinc-900 dark:text-zinc-100 font-medium transition-all hover:bg-zinc-900 hover:text-zinc-50 dark:hover:bg-zinc-100 dark:hover:text-zinc-900 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            デモを見る
-          </Link>
+            {isDemoLoading ? "ログイン中..." : "今すぐ試してみる"}
+          </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-16 max-w-4xl">
+        <div className="mt-4 text-center text-sm text-zinc-500">
+          <p>
+            「今すぐ試してみる」には、デモアカウント (demo@example.com /
+            password123) が必要です。
+          </p>
+          <p>
+            アカウントがない場合は、
+            <Link href="/signup" className="underline hover:text-zinc-800 dark:hover:text-zinc-200">
+              サインアップ
+            </Link>
+            から作成してください。
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-12 max-w-4xl">
           <div className="flex flex-col items-center gap-3 p-6 rounded-2xl bg-white dark:bg-zinc-900 shadow-sm">
             <div className="text-4xl">🎯</div>
             <h3 className="font-semibold text-zinc-900 dark:text-zinc-100">FSRS Algorithm</h3>
