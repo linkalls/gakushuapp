@@ -128,14 +128,17 @@ app.get("/decks", async (c) => {
         .select({ count: count() })
         .from(cards)
         .where(
-          and(
-            inArray(cards.deckId, deckIds),
-            inArray(cards.state, [1, 3]),
-            lte(cards.due, currentTime)
-          )
+          and(inArray(cards.deckId, deckIds), inArray(cards.state, [1, 3]))
         )
         .get();
       const learningCards = learningCardsResult?.count || 0;
+
+      const reviewCardsResult = await db
+        .select({ count: count() })
+        .from(cards)
+        .where(and(inArray(cards.deckId, deckIds), eq(cards.state, 2)))
+        .get();
+      const reviewCards = reviewCardsResult?.count || 0;
 
       const dueCardsResult = await db
         .select({ count: count() })
@@ -143,7 +146,7 @@ app.get("/decks", async (c) => {
         .where(
           and(
             inArray(cards.deckId, deckIds),
-            sql`${cards.state} != 0`,
+            sql`${cards.state} != 0`, // 新規カード(state=0)を除外
             lte(cards.due, currentTime)
           )
         )
@@ -161,6 +164,7 @@ app.get("/decks", async (c) => {
           totalCards,
           newCards,
           learningCards,
+          reviewCards,
           dueCards,
           progress,
         },
@@ -300,6 +304,7 @@ app.get("/decks/:id/stats", async (c) => {
       totalCards: 0,
       newCards: 0,
       learningCards: 0,
+      reviewCards: 0,
       dueCards: 0,
       progress: 0,
     });
@@ -325,15 +330,16 @@ app.get("/decks/:id/stats", async (c) => {
   const learningCardsResult = await db
     .select({ count: count() })
     .from(cards)
-    .where(
-      and(
-        inArray(cards.deckId, deckIds),
-        inArray(cards.state, [1, 3]),
-        lte(cards.due, currentTime)
-      )
-    )
+    .where(and(inArray(cards.deckId, deckIds), inArray(cards.state, [1, 3])))
     .get();
   const learningCards = learningCardsResult?.count || 0;
+
+  const reviewCardsResult = await db
+    .select({ count: count() })
+    .from(cards)
+    .where(and(inArray(cards.deckId, deckIds), eq(cards.state, 2)))
+    .get();
+  const reviewCards = reviewCardsResult?.count || 0;
 
   const dueCardsResult = await db
     .select({ count: count() })
@@ -353,10 +359,15 @@ app.get("/decks/:id/stats", async (c) => {
       ? Math.round(((totalCards - newCards) / totalCards) * 100)
       : 0;
 
+  console.log(
+    `[Stats] Deck ${id} - Total: ${totalCards}, New: ${newCards}, Learning: ${learningCards}, Review: ${reviewCards}, Due: ${dueCards}`
+  );
+
   return c.json({
     totalCards,
     newCards,
     learningCards,
+    reviewCards,
     dueCards,
     progress,
   });
@@ -718,7 +729,22 @@ app.get("/cards/due", async (c) => {
 
 // Submit a review
 app.post("/reviews", async (c) => {
-  const body = await c.req.json<{ cardId: string; rating: number }>();
+  const body = await c.req.json<{
+    cardId: string;
+    rating: number;
+    // Client-calculated FSRS data
+    cardData?: {
+      due: number;
+      stability: number;
+      difficulty: number;
+      elapsedDays: number;
+      scheduledDays: number;
+      reps: number;
+      lapses: number;
+      state: number;
+      lastReview: number;
+    };
+  }>();
 
   const dbCard = await db
     .select()
@@ -730,66 +756,73 @@ app.post("/reviews", async (c) => {
     return c.json({ error: "Card not found" }, 404);
   }
 
-  // Convert Drizzle dates to timestamps for FSRS
-  const cardForFSRS = {
-    id: dbCard.id,
-    deckId: dbCard.deckId,
-    front: dbCard.front,
-    back: dbCard.back,
-    due:
-      typeof dbCard.due === "number"
-        ? dbCard.due
-        : (dbCard.due as Date).getTime(),
-    stability: dbCard.stability,
-    difficulty: dbCard.difficulty,
-    elapsedDays: dbCard.elapsedDays,
-    scheduledDays: dbCard.scheduledDays,
-    reps: dbCard.reps,
-    lapses: dbCard.lapses,
-    state: dbCard.state,
-    lastReview: dbCard.lastReview,
-    createdAt:
-      dbCard.createdAt instanceof Date
-        ? dbCard.createdAt.getTime()
-        : dbCard.createdAt,
-    updatedAt:
-      dbCard.updatedAt instanceof Date
-        ? dbCard.updatedAt.getTime()
-        : dbCard.updatedAt,
-  };
+  const timestamp = new Date();
+  let updatedCardData;
 
-  // Process review with FSRS
-  const { card: updatedCardData, log } = reviewCard(
-    cardForFSRS,
-    body.rating as Rating
-  );
+  // If client provided pre-calculated data, use it directly
+  if (body.cardData) {
+    console.log("Using client-calculated FSRS data:", body.cardData);
+    updatedCardData = body.cardData;
+  } else {
+    // Fallback: Calculate on server (for backwards compatibility or if client fails)
+    console.log("Client data not provided, calculating on server");
 
-  console.log("Card before FSRS:", cardForFSRS);
-  console.log("Card after FSRS:", updatedCardData);
-  console.log("Review processed:", {
-    cardId: body.cardId,
-    rating: body.rating,
-    originalDue: cardForFSRS.due,
-    newDue: updatedCardData.due,
-    newDueIsNaN: Number.isNaN(updatedCardData.due),
-    newDueType: typeof updatedCardData.due,
-    originalState: cardForFSRS.state,
-    newState: updatedCardData.state,
-  });
+    const cardForFSRS = {
+      id: dbCard.id,
+      deckId: dbCard.deckId,
+      front: dbCard.front,
+      back: dbCard.back,
+      due:
+        typeof dbCard.due === "number"
+          ? dbCard.due
+          : (dbCard.due as Date).getTime(),
+      stability: dbCard.stability,
+      difficulty: dbCard.difficulty,
+      elapsedDays: dbCard.elapsedDays,
+      scheduledDays: dbCard.scheduledDays,
+      reps: dbCard.reps,
+      lapses: dbCard.lapses,
+      state: dbCard.state,
+      lastReview: dbCard.lastReview,
+      createdAt:
+        dbCard.createdAt instanceof Date
+          ? dbCard.createdAt.getTime()
+          : dbCard.createdAt,
+      updatedAt:
+        dbCard.updatedAt instanceof Date
+          ? dbCard.updatedAt.getTime()
+          : dbCard.updatedAt,
+    };
 
-  // Ensure all required fields have values
+    const { card: serverCalculated } = reviewCard(
+      cardForFSRS,
+      body.rating as Rating
+    );
+
+    updatedCardData = {
+      due: serverCalculated.due!,
+      stability: serverCalculated.stability!,
+      difficulty: serverCalculated.difficulty!,
+      elapsedDays: serverCalculated.elapsedDays!,
+      scheduledDays: serverCalculated.scheduledDays!,
+      reps: serverCalculated.reps!,
+      lapses: serverCalculated.lapses!,
+      state: serverCalculated.state!,
+      lastReview: serverCalculated.lastReview!,
+    };
+  }
+
+  // Validate data
   if (
     updatedCardData.due === undefined ||
     updatedCardData.due === null ||
     Number.isNaN(updatedCardData.due)
   ) {
-    console.error("FSRS returned invalid due!", updatedCardData);
-    return c.json({ error: "Failed to calculate next review time" }, 500);
+    console.error("Invalid card data received:", updatedCardData);
+    return c.json({ error: "Invalid card data" }, 400);
   }
 
-  // Update card with FSRS data
-  const timestamp = new Date();
-
+  // Update card in database
   console.log("Updating card in database:", {
     cardId: body.cardId,
     due: updatedCardData.due,
@@ -804,14 +837,14 @@ app.post("/reviews", async (c) => {
     .update(cards)
     .set({
       due: updatedCardData.due,
-      stability: updatedCardData.stability!,
-      difficulty: updatedCardData.difficulty!,
-      elapsedDays: updatedCardData.elapsedDays!,
-      scheduledDays: updatedCardData.scheduledDays!,
-      reps: updatedCardData.reps!,
-      lapses: updatedCardData.lapses!,
-      state: updatedCardData.state!,
-      lastReview: updatedCardData.lastReview!,
+      stability: updatedCardData.stability,
+      difficulty: updatedCardData.difficulty,
+      elapsedDays: updatedCardData.elapsedDays,
+      scheduledDays: updatedCardData.scheduledDays,
+      reps: updatedCardData.reps,
+      lapses: updatedCardData.lapses,
+      state: updatedCardData.state,
+      lastReview: updatedCardData.lastReview,
       updatedAt: timestamp,
     })
     .where(eq(cards.id, body.cardId));
@@ -832,14 +865,14 @@ app.post("/reviews", async (c) => {
     .where(eq(cards.id, body.cardId))
     .get();
 
-  console.log("Card after DB update:", {
+  console.log("Card saved to database:", {
     cardId: updatedCard?.id,
     state: updatedCard?.state,
     due: updatedCard?.due,
     reps: updatedCard?.reps,
   });
 
-  return c.json({ card: updatedCard, log });
+  return c.json({ card: updatedCard });
 });
 
 // Get statistics

@@ -28,6 +28,8 @@ interface DeckStats {
   newCards: number;
   learningCards: number;
   reviewCards: number;
+  dueCards: number;
+  progress: number;
 }
 
 interface Tag {
@@ -58,6 +60,8 @@ export default function DeckDetailPage() {
     newCards: 0,
     learningCards: 0,
     reviewCards: 0,
+    dueCards: 0,
+    progress: 0,
   });
   const [pagination, setPagination] = useState({
     page: 1,
@@ -73,6 +77,7 @@ export default function DeckDetailPage() {
 
   useEffect(() => {
     fetchDeck();
+    fetchDeckStats();
     fetchTags();
   }, [deckId]);
 
@@ -90,6 +95,16 @@ export default function DeckDetailPage() {
         }
       })
       .catch((error) => console.error("Failed to fetch deck:", error));
+  };
+
+  const fetchDeckStats = () => {
+    fetch(`/api/decks/${deckId}/stats`)
+      .then((res) => res.json())
+      .then((data) => {
+        console.log('[Deck Detail] Received stats:', data);
+        setDeckStats(data);
+      })
+      .catch((error) => console.error("Failed to fetch deck stats:", error));
   };
 
   const fetchTags = async () => {
@@ -114,17 +129,6 @@ export default function DeckDetailPage() {
       .then((data: PaginatedResponse) => {
         setCards(data.cards);
         setPagination(data.pagination);
-
-        // Calculate state-based stats from all cards
-        const stats = data.cards.reduce((acc, card) => {
-          acc.totalCards++;
-          if (card.state === 0) acc.newCards++;
-          else if (card.state === 1 || card.state === 3) acc.learningCards++;
-          else if (card.state === 2) acc.reviewCards++;
-          return acc;
-        }, { totalCards: 0, newCards: 0, learningCards: 0, reviewCards: 0 });
-
-        setDeckStats(stats);
         setLoading(false);
       })
       .catch((error) => {
@@ -162,6 +166,7 @@ export default function DeckDetailPage() {
         setNewCard({ front: "", back: "", tags: [] });
         setShowNewCardForm(false);
         fetchCards();
+        fetchDeckStats(); // Statsを再取得
       }
     } catch (error) {
       console.error("Failed to create card:", error);
@@ -184,6 +189,7 @@ export default function DeckDetailPage() {
       const res = await fetch(`/api/cards/${cardId}`, { method: "DELETE" });
       if (res.ok) {
         fetchCards();
+        fetchDeckStats(); // Statsを再取得
       }
     } catch (error) {
       console.error("Failed to delete card:", error);
@@ -270,7 +276,7 @@ export default function DeckDetailPage() {
             )}
             <div className="mt-3 space-y-2">
               <p className="text-sm text-zinc-500 dark:text-zinc-500">
-                {pagination.total} カード（サブデッキ含む）
+                {deckStats.totalCards} カード（サブデッキ含む）
               </p>
               <div className="flex items-center gap-4 text-sm">
                 <div className="flex items-center gap-2">

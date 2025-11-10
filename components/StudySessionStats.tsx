@@ -88,20 +88,31 @@ export function StudySessionStats() {
 
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  thirtyDaysAgo.setHours(0, 0, 0, 0); // Reset to start of day
+
+  // Initialize last 30 days with 0 values
   const last30Days: { [date: string]: number } = {};
   for (let i = 29; i >= 0; i--) {
     const date = new Date();
     date.setDate(date.getDate() - i);
+    date.setHours(0, 0, 0, 0); // Reset to start of day
     const dateStr = date.toISOString().split("T")[0];
     last30Days[dateStr] = 0;
   }
 
+  // Accumulate study durations by date
   studySessions
     .filter((s) => new Date(s.createdAt) >= thirtyDaysAgo)
     .forEach((s) => {
-      const date = new Date(s.createdAt).toISOString().split("T")[0];
-      if (last30Days[date] !== undefined) {
-        last30Days[date] += s.duration;
+      const sessionDate = new Date(s.createdAt);
+      // Use local date to avoid timezone issues
+      const year = sessionDate.getFullYear();
+      const month = String(sessionDate.getMonth() + 1).padStart(2, '0');
+      const day = String(sessionDate.getDate()).padStart(2, '0');
+      const dateStr = `${year}-${month}-${day}`;
+
+      if (last30Days[dateStr] !== undefined) {
+        last30Days[dateStr] += s.duration;
       }
     });
 

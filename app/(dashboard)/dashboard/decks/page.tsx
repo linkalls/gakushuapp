@@ -18,6 +18,7 @@ interface DeckStats {
   totalCards: number;
   newCards: number;
   learningCards: number;
+  reviewCards: number;
   dueCards: number;
   progress: number;
 }
@@ -257,8 +258,11 @@ export default function DecksPage() {
                     <span className="text-yellow-600 dark:text-yellow-400">
                       学習中: <span className="font-mono font-semibold">{stats.learningCards}</span>
                     </span>
+                    <span className="text-green-600 dark:text-green-400">
+                      復習: <span className="font-mono font-semibold">{stats.reviewCards}</span>
+                    </span>
                     <span className="text-red-600 dark:text-red-400">
-                      復習: <span className="font-mono font-semibold">{stats.dueCards}</span>
+                      今日: <span className="font-mono font-semibold">{stats.dueCards}</span>
                     </span>
                   </div>
 

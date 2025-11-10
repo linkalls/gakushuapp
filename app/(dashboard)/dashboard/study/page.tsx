@@ -2,6 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { FSRS, Rating, State, type Card as FSRSCard } from "ts-fsrs";
 
 interface Card {
   id: string;
@@ -14,6 +15,59 @@ interface Card {
   reps: number;
   state: number; // 0=New, 1=Learning, 2=Review, 3=Relearning
   lapses: number;
+  elapsedDays?: number;
+  scheduledDays?: number;
+  lastReview?: number | null;
+}
+
+// Initialize FSRS on client side (Anki-like short learning steps)
+// learning_steps / relearning_steps 例: 1分 -> 1m, 10分 -> 10m
+// request_retention は 0.9 前後が FSRS 推奨レンジ
+const fsrs = new FSRS({
+  learning_steps: ["1m", "10m"],
+  relearning_steps: ["10m"],
+  request_retention: 0.9,
+});
+
+// Convert database card to FSRS card
+function cardToFSRS(card: Card): FSRSCard {
+  const stability = card.stability === 0 && card.reps > 0
+    ? Math.max(0.1, card.scheduledDays || 1)
+    : card.stability === 0
+      ? 0.1
+      : card.stability;
+
+  return {
+    due: new Date(card.due),
+    stability: stability,
+    difficulty: card.difficulty,
+    elapsed_days: card.elapsedDays || 0,
+    scheduled_days: card.scheduledDays || 0,
+    // learning_steps: 現在の学習ステップインデックス (Anki的には 0 から開始)
+    learning_steps: 0,
+    reps: card.reps,
+    lapses: card.lapses,
+    state: card.state as State,
+    last_review: card.lastReview ? new Date(card.lastReview) : undefined,
+  };
+}
+
+// Convert FSRS card back to our Card format
+function fsrsToCard(fsrsCard: FSRSCard, originalCard: Card): Card {
+  return {
+    ...originalCard,
+    due: fsrsCard.due instanceof Date ? fsrsCard.due.getTime() : Number(fsrsCard.due),
+    stability: fsrsCard.stability,
+    difficulty: fsrsCard.difficulty,
+    elapsedDays: fsrsCard.elapsed_days,
+    scheduledDays: fsrsCard.scheduled_days,
+    reps: fsrsCard.reps,
+    lapses: fsrsCard.lapses,
+    state: fsrsCard.state,
+    lastReview: fsrsCard.last_review
+      ? (fsrsCard.last_review instanceof Date ? fsrsCard.last_review.getTime() : Number(fsrsCard.last_review))
+      : null,
+  };
 }
 
 export default function StudyPage() {
@@ -135,7 +189,37 @@ export default function StudyPage() {
           allCards = data.cards;
         }
 
-        const dueCards = allCards.filter((card: Card) => card.due <= Date.now());
+        const now = Date.now();
+        const gracePeriod = 10 * 60 * 1000; // 10 minutes grace period
+
+        // Include cards that are due now OR will be due within grace period
+        // This allows users to continue studying learning cards without waiting
+        const dueCards = allCards.filter((card: Card) => {
+          // New cards (state 0) - always include if due
+          if (card.state === 0 && card.due <= now) {
+            return true;
+          }
+          // Learning/Relearning cards (state 1, 3) - include with grace period
+          if ((card.state === 1 || card.state === 3) && card.due <= now + gracePeriod) {
+            return true;
+          }
+          // Review cards (state 2) - only include if actually due
+          if (card.state === 2 && card.due <= now) {
+            return true;
+          }
+          return false;
+        });
+
+        console.log("Fetched cards:", {
+          total: allCards.length,
+          filtered: dueCards.length,
+          byState: {
+            new: dueCards.filter(c => c.state === 0).length,
+            learning: dueCards.filter(c => c.state === 1 || c.state === 3).length,
+            review: dueCards.filter(c => c.state === 2).length,
+          }
+        });
+
         setCards(dueCards);
         setLoading(false);
         if (dueCards.length === 0) {
@@ -160,6 +244,95 @@ export default function StudyPage() {
 
     const newTotalElapsedTime = totalElapsedTime + cardElapsedTime;
 
+    // *** CLIENT-SIDE FSRS CALCULATION ***
+    // Calculate next state immediately on the client for instant UI update
+    const fsrsCard = cardToFSRS(currentCard);
+    const reviewTime = new Date();
+    const schedulingCards = fsrs.repeat(fsrsCard, reviewTime);
+
+    // Get the result based on rating (1=Again, 2=Hard, 3=Good, 4=Easy)
+    let selectedResult;
+    if (rating === 1) selectedResult = schedulingCards[Rating.Again];
+    else if (rating === 2) selectedResult = schedulingCards[Rating.Hard];
+    else if (rating === 3) selectedResult = schedulingCards[Rating.Good];
+    else selectedResult = schedulingCards[Rating.Easy];
+
+    const optimisticCard = fsrsToCard(selectedResult.card, currentCard);
+
+    // Immediately update UI with optimistic result
+    const updatedCards = [...cards];
+    updatedCards[currentIndex] = optimisticCard;
+
+    // Anki-like requeue for short learning/relearning steps
+    // 短い学習ステップ(例: 1m/10m)内で次回が来るカードは、配列に再挿入してセッション中に再出現させる
+    const REQUEUE_WINDOW_MS = 15 * 60 * 1000; // 15分以内のものは再キュー
+    const nowMs = Date.now();
+    const isLearningLike =
+      optimisticCard.state === State.Learning || optimisticCard.state === State.Relearning;
+    const shouldRequeue = isLearningLike && optimisticCard.due <= nowMs + REQUEUE_WINDOW_MS;
+
+    // Check if this is the last card BEFORE moving to next
+    const isLastCard = currentIndex + 1 >= updatedCards.length;
+
+    if (shouldRequeue) {
+      // 現在のカードをいったん取り除いて due 昇順で再挿入
+      const withoutCurrent = updatedCards.filter((_, i) => i !== currentIndex);
+      // 挿入位置(単純に due 昇順で見つける)
+      let insertIdx = withoutCurrent.findIndex((c) => c.due > optimisticCard.due);
+      if (insertIdx === -1) insertIdx = withoutCurrent.length;
+      const newArr = [
+        ...withoutCurrent.slice(0, insertIdx),
+        optimisticCard,
+        ...withoutCurrent.slice(insertIdx),
+      ];
+
+      setCards(newArr);
+      // currentIndex は据え置き。いままでの次のカードが新しい先頭として表示される
+      setShowAnswer(false);
+      setTotalElapsedTime(newTotalElapsedTime);
+
+      // Reset card timer state (will be restarted by useEffect)
+      setCardElapsedTime(0);
+      setCardStartTime(0);
+
+      // セッション完了判定（全て消費済みなら終了）
+      if (newArr.length === 0) {
+        setFinished(true);
+      }
+    } else if (isLastCard) {
+      // Update everything for completion
+      setCards(updatedCards);
+      setFinished(true);
+      setCardElapsedTime(0);
+      setCardStartTime(0);
+      setTotalElapsedTime(newTotalElapsedTime);
+
+      // Save session on completion (async)
+      fetch("/api/study-sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          deckId,
+          duration: newTotalElapsedTime,
+          cardsReviewed: currentIndex + 1,
+        }),
+      });
+    } else {
+      // Update cards, index, and other state together in React 18's automatic batching
+      // This ensures the UI shows the updated stats briefly before moving to next card
+      setCards(updatedCards);
+      setCurrentIndex((idx) => idx + 1);
+      setShowAnswer(false);
+      setTotalElapsedTime(newTotalElapsedTime);
+
+      // Reset card timer state (will be restarted by useEffect)
+      setCardElapsedTime(0);
+      setCardStartTime(0);
+    }
+
+    // Send review to server in background (don't wait for response)
+    // This ensures the database is updated even if client closes
+    // Send the pre-calculated FSRS data to avoid redundant calculations
     try {
       const response = await fetch("/api/reviews", {
         method: "POST",
@@ -167,58 +340,26 @@ export default function StudyPage() {
         body: JSON.stringify({
           cardId: currentCard.id,
           rating,
+          cardData: {
+            due: optimisticCard.due,
+            stability: optimisticCard.stability,
+            difficulty: optimisticCard.difficulty,
+            elapsedDays: optimisticCard.elapsedDays || 0,
+            scheduledDays: optimisticCard.scheduledDays || 0,
+            reps: optimisticCard.reps,
+            lapses: optimisticCard.lapses,
+            state: optimisticCard.state,
+            lastReview: optimisticCard.lastReview || Date.now(),
+          },
         }),
       });
 
       const result = await response.json();
 
-      // Update card state in local cards array for real-time display
-      if (result.card) {
-        setCards(prevCards => {
-          const newCards = [...prevCards];
-          newCards[currentIndex] = {
-            ...newCards[currentIndex],
-            state: result.card.state,
-            reps: result.card.reps,
-            lapses: result.card.lapses,
-            difficulty: result.card.difficulty,
-            due: result.card.due,
-          };
-          return newCards;
-        });
-      }
-
-      // Move to next card or finish
-      if (currentIndex + 1 >= cards.length) {
-        setFinished(true);
-        setCardElapsedTime(0);
-        setCardStartTime(0);
-        setTotalElapsedTime(newTotalElapsedTime);
-
-        // Save session on completion
-        fetch("/api/study-sessions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            deckId,
-            duration: newTotalElapsedTime,
-            cardsReviewed: currentIndex + 1,
-          }),
-        });
-      } else {
-        // Update total time before moving to next card
-        setTotalElapsedTime(newTotalElapsedTime);
-        setShowAnswer(false);
-
-        // Reset card timer state (will be restarted by useEffect)
-        setCardElapsedTime(0);
-        setCardStartTime(0);
-
-        // Move to next card (this will trigger the timer reset useEffect)
-        setCurrentIndex((idx) => idx + 1);
-      }
+      // Server update confirmed
     } catch (error) {
-      console.error("Failed to submit review:", error);
+      console.error("Failed to submit review to server:", error);
+      // TODO: Could implement retry logic or offline queue here
     }
   };
 
@@ -262,23 +403,18 @@ export default function StudyPage() {
 
   const currentCard = cards[currentIndex];
 
-  // Calculate stats
+  // Calculate stats based on remaining cards (from currentIndex onwards)
+  // Always include current card until it's actually reviewed (rating button pressed)
   const totalCards = cards.length;
   const remainingCards = totalCards - currentIndex;
 
-  // Separate cards by state
-  const newCards = cards.filter((c) => c.state === 0);
-  const learningCards = cards.filter((c) => c.state === 1 || c.state === 3);
-  const reviewCards = cards.filter((c) => c.state === 2);
+  // Count remaining cards that haven't been reviewed yet
+  // This includes the current card being displayed
+  const remainingCardsList = cards.slice(currentIndex);
 
-  // Calculate remaining by state
-  const reviewedNew = cards.slice(0, currentIndex).filter((c) => c.state === 0).length;
-  const reviewedLearning = cards.slice(0, currentIndex).filter((c) => c.state === 1 || c.state === 3).length;
-  const reviewedReview = cards.slice(0, currentIndex).filter((c) => c.state === 2).length;
-
-  const remainingNew = Math.max(0, newCards.length - reviewedNew);
-  const remainingLearning = Math.max(0, learningCards.length - reviewedLearning);
-  const remainingReview = Math.max(0, reviewCards.length - reviewedReview);
+  const remainingNew = remainingCardsList.filter((c) => c.state === 0).length;
+  const remainingLearning = remainingCardsList.filter((c) => c.state === 1 || c.state === 3).length;
+  const remainingReview = remainingCardsList.filter((c) => c.state === 2).length;
 
   // Get current card state label
   const getStateLabel = (state: number) => {
