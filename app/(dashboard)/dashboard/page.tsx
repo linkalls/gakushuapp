@@ -111,7 +111,7 @@ export default function DashboardPage() {
           </h2>
           <div className="space-y-3">
             <Link
-              href="/dashboard/study"
+              href="/dashboard/decks"
               className="flex items-center justify-between p-4 rounded-xl bg-zinc-50 dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors group"
             >
               <div className="flex items-center gap-3">

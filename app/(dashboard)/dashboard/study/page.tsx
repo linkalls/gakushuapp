@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface Card {
   id: string;
@@ -23,39 +23,93 @@ export default function StudyPage() {
   const [showAnswer, setShowAnswer] = useState(false);
   const [loading, setLoading] = useState(true);
   const [finished, setFinished] = useState(false);
-  const [studyStartTime, setStudyStartTime] = useState<number>(0);
-  const [elapsedTime, setElapsedTime] = useState<number>(0);
+
+  // --- Timer State Changes ---
+  const [totalElapsedTime, setTotalElapsedTime] = useState<number>(0);
+  const [cardStartTime, setCardStartTime] = useState<number>(0);
+  const [cardElapsedTime, setCardElapsedTime] = useState<number>(0);
+  // keep a ref to the active interval id so we can clear it deterministically
+  const cardTimerRef = useRef<number | null>(null);
+  // track if we've started the timer for the first card
+  const hasStartedTimerRef = useRef(false);
+
+  // Ref to hold the latest state for cleanup function on unmount
+  const latestState = useRef({
+    totalElapsedTime,
+    cardElapsedTime,
+    currentIndex,
+    finished,
+    deckId,
+  });
+  useEffect(() => {
+    latestState.current = {
+      totalElapsedTime,
+      cardElapsedTime,
+      currentIndex,
+      finished,
+      deckId,
+    };
+  });
+  // --- End of Timer State Changes ---
 
   useEffect(() => {
     fetchDueCards();
-    setStudyStartTime(Date.now());
 
+    // Cleanup function to save abandoned sessions
     return () => {
-      if (studyStartTime > 0 && currentIndex > 0) {
-        const duration = Math.floor((Date.now() - studyStartTime) / 1000);
+      const state = latestState.current;
+      if (!state.finished && state.currentIndex > 0) {
+        const duration = state.totalElapsedTime + state.cardElapsedTime;
         fetch("/api/study-sessions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            deckId,
+            deckId: state.deckId,
             duration,
-            cardsReviewed: currentIndex,
+            cardsReviewed: state.currentIndex,
           }),
         });
       }
     };
   }, [deckId]);
 
-  // Timer effect
+  // --- New Timer Effects ---
+  // This effect runs the timer for the current card.
+  // We increment `cardElapsedTime` each second and hold the interval id in `cardTimerRef`
   useEffect(() => {
-    const timer = setInterval(() => {
-      if (studyStartTime > 0 && !finished) {
-        setElapsedTime(Math.floor((Date.now() - studyStartTime) / 1000));
-      }
-    }, 1000);
+    // clear any existing interval first to avoid duplicates
+    if (cardTimerRef.current) {
+      clearInterval(cardTimerRef.current);
+      cardTimerRef.current = null;
+    }
 
-    return () => clearInterval(timer);
-  }, [studyStartTime, finished]);
+    // Only run timer when we have started and haven't shown answer yet
+    if (cardStartTime > 0 && !showAnswer && !finished && !loading) {
+      // Start a 1s ticking interval that increments elapsed seconds.
+      cardTimerRef.current = window.setInterval(() => {
+        setCardElapsedTime((prev) => prev + 1);
+      }, 1000) as unknown as number;
+    }
+
+    return () => {
+      if (cardTimerRef.current) {
+        clearInterval(cardTimerRef.current);
+        cardTimerRef.current = null;
+      }
+    };
+  }, [cardStartTime, showAnswer, finished, loading]);
+
+  // This effect resets the timer when a new card is shown
+  useEffect(() => {
+    // Only start timer once cards are loaded and we haven't finished
+    if (!loading && cards.length > 0 && currentIndex < cards.length && !finished) {
+      // Reset timer for new card
+      setCardStartTime(Date.now());
+      setCardElapsedTime(0);
+      hasStartedTimerRef.current = true;
+    }
+  }, [currentIndex, loading, cards.length, finished]);
+  // --- End of New Timer Effects ---
 
   const fetchDueCards = () => {
     let url = "/api/cards/due";
@@ -96,6 +150,14 @@ export default function StudyPage() {
     const currentCard = cards[currentIndex];
     if (!currentCard) return;
 
+    // Stop the current card timer immediately
+    if (cardTimerRef.current) {
+      clearInterval(cardTimerRef.current);
+      cardTimerRef.current = null;
+    }
+
+    const newTotalElapsedTime = totalElapsedTime + cardElapsedTime;
+
     try {
       await fetch("/api/reviews", {
         method: "POST",
@@ -106,12 +168,34 @@ export default function StudyPage() {
         }),
       });
 
-      // Move to next card
+      // Move to next card or finish
       if (currentIndex + 1 >= cards.length) {
         setFinished(true);
+        setCardElapsedTime(0);
+        setCardStartTime(0);
+        setTotalElapsedTime(newTotalElapsedTime);
+
+        // Save session on completion
+        fetch("/api/study-sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            deckId,
+            duration: newTotalElapsedTime,
+            cardsReviewed: currentIndex + 1,
+          }),
+        });
       } else {
-        setCurrentIndex(currentIndex + 1);
+        // Update total time before moving to next card
+        setTotalElapsedTime(newTotalElapsedTime);
         setShowAnswer(false);
+
+        // Reset card timer state (will be restarted by useEffect)
+        setCardElapsedTime(0);
+        setCardStartTime(0);
+
+        // Move to next card (this will trigger the timer reset useEffect)
+        setCurrentIndex((idx) => idx + 1);
       }
     } catch (error) {
       console.error("Failed to submit review:", error);
@@ -178,7 +262,7 @@ export default function StudyPage() {
         {/* Stats in top right */}
         <div className="text-right">
           <div className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
-            {formatTime(elapsedTime)}
+            {formatTime(totalElapsedTime + cardElapsedTime)}
           </div>
           <div className="flex items-center gap-4 text-sm font-medium text-zinc-900 dark:text-zinc-100 mt-1">
             <span className="text-blue-600 dark:text-blue-400" title="New Cards Left">
@@ -216,7 +300,14 @@ export default function StudyPage() {
         <div className="p-6 bg-zinc-50 dark:bg-zinc-800 border-t border-zinc-200 dark:border-zinc-700">
           {!showAnswer ? (
             <button
-              onClick={() => setShowAnswer(true)}
+              onClick={() => {
+                // Stop timer when showing answer
+                if (cardTimerRef.current) {
+                  clearInterval(cardTimerRef.current);
+                  cardTimerRef.current = null;
+                }
+                setShowAnswer(true);
+              }}
               className="w-full py-4 bg-zinc-900 dark:bg-zinc-100 text-zinc-50 dark:text-zinc-900 rounded-xl font-medium hover:scale-105 transition-transform"
             >
               答えを表示

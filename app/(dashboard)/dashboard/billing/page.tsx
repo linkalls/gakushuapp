@@ -52,7 +52,7 @@ export default function BillingPage() {
           </p>
           <ul className="space-y-3 text-zinc-600 dark:text-zinc-400 flex-grow">
             <li className="flex items-center gap-2">
-              <span className="text-green-500">✔</span> デッキ作成 (3つまで)
+              <span className="text-green-500">✔</span> 無制限デッキ作成 
             </li>
             <li className="flex items-center gap-2">
               <span className="text-green-500">✔</span> 基本的なFSRS学習

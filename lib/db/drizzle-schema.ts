@@ -23,11 +23,18 @@ export const users = sqliteTable("users", {
     .$defaultFn(() => sql`(unixepoch() * 1000)`)
     .$onUpdateFn(() => sql`(unixepoch() * 1000)`)
     .notNull(),
-  // Stripe fields
-  stripeCustomerId: text("stripe_customer_id").unique(),
-  subscriptionStatus: text("subscription_status"),
-  planId: text("plan_id"),
-  subscriptionEndDate: integer("subscription_end_date", { mode: "timestamp_ms" }),
+
+  // --- プレミアムプラン用のカラム ---
+  plan: text("plan", { enum: ["free", "pro"] })
+    .default("free")
+    .notNull(),
+  aiUsageCount: integer("ai_usage_count").default(0).notNull(),
+  aiUsageResetAt: integer("ai_usage_reset_at").default(0).notNull(),
+
+  // --- Stripe連携用の新規カラム ---
+  stripeCustomerId: text("stripe_customer_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  stripeSubscriptionStatus: text("stripe_subscription_status"),
 });
 
 export const sessions = sqliteTable("sessions", {
@@ -81,10 +88,10 @@ export const verifications = sqliteTable("verifications", {
   value: text("value").notNull(),
   expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
-    .$defaultFn(() =>new Date())
+    .$defaultFn(() => new Date())
     .notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" })
-    .$defaultFn(() =>new Date())
+    .$defaultFn(() => new Date())
     .$onUpdateFn(() => new Date())
     .notNull(),
 });
@@ -101,9 +108,7 @@ export const decks = sqliteTable("decks", {
     onDelete: "cascade",
   }),
   deckPath: text("deck_path").notNull(),
-  isPublic: integer("is_public", { mode: "boolean" })
-    .default(false)
-    .notNull(),
+  isPublic: integer("is_public", { mode: "boolean" }).default(false).notNull(),
   shareId: text("share_id").unique(),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .$defaultFn(() => sql`(unixepoch() * 1000)`)

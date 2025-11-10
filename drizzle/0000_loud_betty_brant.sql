@@ -49,10 +49,20 @@ CREATE TABLE `decks` (
 	`description` text,
 	`parent_id` text,
 	`deck_path` text NOT NULL,
+	`is_public` integer DEFAULT false NOT NULL,
+	`share_id` text,
 	`created_at` integer NOT NULL,
 	`updated_at` integer NOT NULL,
 	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`parent_id`) REFERENCES `decks`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `decks_share_id_unique` ON `decks` (`share_id`);--> statement-breakpoint
+CREATE TABLE `rankings` (
+	`user_id` text PRIMARY KEY NOT NULL,
+	`score` integer NOT NULL,
+	`rank` integer NOT NULL,
+	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
 CREATE TABLE `reviews` (
@@ -78,6 +88,28 @@ CREATE TABLE `sessions` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `sessions_token_unique` ON `sessions` (`token`);--> statement-breakpoint
+CREATE TABLE `shared_decks` (
+	`id` text PRIMARY KEY NOT NULL,
+	`deck_id` text NOT NULL,
+	`shared_by` text NOT NULL,
+	`shared_with` text,
+	`created_at` integer NOT NULL,
+	FOREIGN KEY (`deck_id`) REFERENCES `decks`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`shared_by`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`shared_with`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE TABLE `study_sessions` (
+	`id` text PRIMARY KEY NOT NULL,
+	`user_id` text NOT NULL,
+	`deck_id` text NOT NULL,
+	`duration` integer NOT NULL,
+	`cards_reviewed` integer NOT NULL,
+	`created_at` integer NOT NULL,
+	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`deck_id`) REFERENCES `decks`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
 CREATE TABLE `tags` (
 	`id` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,
@@ -93,7 +125,13 @@ CREATE TABLE `users` (
 	`email_verified` integer DEFAULT false NOT NULL,
 	`image` text,
 	`created_at` integer NOT NULL,
-	`updated_at` integer NOT NULL
+	`updated_at` integer NOT NULL,
+	`plan` text DEFAULT 'free' NOT NULL,
+	`ai_usage_count` integer DEFAULT 0 NOT NULL,
+	`ai_usage_reset_at` integer DEFAULT 0 NOT NULL,
+	`stripe_customer_id` text,
+	`stripe_subscription_id` text,
+	`stripe_subscription_status` text
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `users_email_unique` ON `users` (`email`);--> statement-breakpoint

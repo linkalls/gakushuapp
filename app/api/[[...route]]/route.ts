@@ -1568,6 +1568,40 @@ app.get("/ranking/weekly-reviews", async (c) => {
   return c.json(ranking);
 });
 
+// ============================================
+// Profile API
+// ============================================
+app.put("/profile", async (c) => {
+  const userSession = await getUserSession(c.req.raw.headers);
+  if (!userSession) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  const userId = userSession.userId;
+
+  const body = await c.req.json<{ name?: string }>();
+
+  if (!body.name || body.name.trim().length === 0) {
+    return c.json({ error: "Name cannot be empty" }, 400);
+  }
+
+  const timestamp = new Date();
+  await db
+    .update(users)
+    .set({
+      name: body.name,
+      updatedAt: timestamp,
+    })
+    .where(eq(users.id, userId));
+
+  const updatedUser = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, userId))
+    .get();
+
+  return c.json(updatedUser);
+});
+
 export const GET = handle(app);
 export const POST = handle(app);
 export const PUT = handle(app);

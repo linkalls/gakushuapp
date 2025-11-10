@@ -116,7 +116,7 @@ export default function DeckDetailPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          deck_id: deckId,
+          deckId: deckId,
           front: newCard.front,
           back: newCard.back,
         }),
@@ -349,8 +349,8 @@ export default function DeckDetailPage() {
                       type="button"
                       onClick={() => toggleTag(tag.id)}
                       className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${newCard.tags.includes(tag.id)
-                          ? "bg-zinc-900 dark:bg-zinc-100 text-zinc-50 dark:text-zinc-900"
-                          : "bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+                        ? "bg-zinc-900 dark:bg-zinc-100 text-zinc-50 dark:text-zinc-900"
+                        : "bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700"
                         }`}
                     >
                       {tag.name}

@@ -14,10 +14,10 @@ export default function Home() {
     setIsDemoLoading(true);
     setError(null);
     try {
-      const result = await signIn("credentials", {
+      const result = await signIn.email({
         email: "demo@example.com",
         password: "password123",
-      });
+      })
 
       if (result?.error) {
         setError(

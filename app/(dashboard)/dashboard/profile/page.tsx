@@ -1,9 +1,60 @@
 "use client";
 
 import { useSession } from "@/lib/auth-client";
+import { useState, useEffect } from "react";
 
 export default function ProfilePage() {
   const { data: session, status } = useSession();
+  const [name, setName] = useState("");
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (session?.user?.name) {
+      setName(session.user.name);
+    }
+  }, [session?.user?.name]);
+
+  const handleUpdateProfile = async () => {
+    if (!name.trim()) {
+      setError("表示名を入力してください。");
+      return;
+    }
+    if (name === session?.user?.name) {
+      // 名前が変更されていない場合は何もしない
+      return;
+    }
+
+    setIsUpdating(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const response = await fetch("/api/profile", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "プロフィールの更新に失敗しました。");
+      }
+
+      setSuccess("プロフィールが正常に更新されました。");
+      // ページをリロードしてセッション情報を最新にする
+      // より高度な実装としては、useSessionのupdate関数を使う
+      window.location.reload();
+
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "予期せぬエラーが発生しました。");
+    } finally {
+      setIsUpdating(false);
+    }
+  };
 
   if (status === "loading") {
     return (
@@ -61,9 +112,11 @@ export default function ProfilePage() {
           <input
             type="text"
             id="name"
-            defaultValue={user.name || ""}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
             className="w-full px-4 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100"
             placeholder="表示名"
+            disabled={isUpdating}
           />
         </div>
 
@@ -83,18 +136,18 @@ export default function ProfilePage() {
           />
         </div>
 
+        {error && <p className="text-sm text-red-500">{error}</p>}
+        {success && <p className="text-sm text-green-500">{success}</p>}
+
         <div className="flex justify-end">
           <button
-            // onClick={handleUpdateProfile}
+            onClick={handleUpdateProfile}
             className="px-6 py-2 bg-zinc-900 dark:bg-zinc-100 text-zinc-50 dark:text-zinc-900 rounded-lg font-medium hover:scale-105 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled // 機能は未実装のため無効化
+            disabled={isUpdating || name === session.user.name || !name.trim()}
           >
-            更新
+            {isUpdating ? "更新中..." : "更新"}
           </button>
         </div>
-         <div className="text-center text-sm text-zinc-500 dark:text-zinc-500 pt-4 border-t border-zinc-200 dark:border-zinc-800">
-            <p>プロフィールの更新機能は現在準備中です。</p>
-         </div>
       </div>
     </div>
   );
