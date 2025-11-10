@@ -1761,7 +1761,7 @@ app.post("/ai/generate/text", async (c) => {
 
   // Check AI usage limit
   const usageCheck = checkAIUsageLimit(
-    user.plan,
+    // user.plan,
     user.aiUsageCount,
     user.aiUsageResetAt
   );
@@ -1891,7 +1891,7 @@ app.post("/ai/generate/pdf", async (c) => {
 
   // Check AI usage limit
   const usageCheck = checkAIUsageLimit(
-    user.plan,
+    // user.plan,
     user.aiUsageCount,
     user.aiUsageResetAt
   );
@@ -2053,7 +2053,7 @@ app.post("/ai/generate/image", async (c) => {
 
   // Check AI usage limit
   const usageCheck = checkAIUsageLimit(
-    user.plan,
+    // user.plan,
     user.aiUsageCount,
     user.aiUsageResetAt
   );
@@ -2201,17 +2201,17 @@ app.get("/ai/usage", async (c) => {
   }
 
   const usageCheck = checkAIUsageLimit(
-    user.plan,
+    // user.plan,
     user.aiUsageCount,
     user.aiUsageResetAt
   );
 
   return c.json({
-    plan: user.plan,
+    // plan: user.plan,
     usageCount: user.aiUsageCount,
     remaining: usageCheck.remaining,
     resetAt: user.aiUsageResetAt,
-    unlimited: user.plan === "pro",
+    // unlimited: user.plan === "pro",
   });
 });
 

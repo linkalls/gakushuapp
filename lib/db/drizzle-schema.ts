@@ -24,10 +24,7 @@ export const users = sqliteTable("users", {
     .$onUpdateFn(() => sql`(unixepoch() * 1000)`)
     .notNull(),
 
-  // --- プレミアムプラン用のカラム ---
-  plan: text("plan", { enum: ["free", "pro"] })
-    .default("free")
-    .notNull(),
+ 
   aiUsageCount: integer("ai_usage_count").default(0).notNull(),
   aiUsageResetAt: integer("ai_usage_reset_at").default(0).notNull(),
 
@@ -93,6 +90,28 @@ export const verifications = sqliteTable("verifications", {
   updatedAt: integer("updated_at", { mode: "timestamp_ms" })
     .$defaultFn(() => new Date())
     .$onUpdateFn(() => new Date())
+    .notNull(),
+});
+
+export const subscriptions = sqliteTable("subscriptions", {
+  id: text("id").primaryKey(),
+  plan: text("plan").notNull(),
+  referenceId: text("reference_id").notNull(),
+  stripeCustomerId: text("stripe_customer_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  status: text("status").notNull(),
+  periodStart: integer("period_start", { mode: "timestamp_ms" }),
+  periodEnd: integer("period_end", { mode: "timestamp_ms" }),
+  cancelAtPeriodEnd: integer("cancel_at_period_end", { mode: "boolean" }),
+  seats: integer("seats"),
+  trialStart: integer("trial_start", { mode: "timestamp_ms" }),
+  trialEnd: integer("trial_end", { mode: "timestamp_ms" }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .$defaultFn(() => sql`(unixepoch() * 1000)`)
+    .notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+    .$defaultFn(() => sql`(unixepoch() * 1000)`)
+    .$onUpdateFn(() => sql`(unixepoch() * 1000)`)
     .notNull(),
 });
 

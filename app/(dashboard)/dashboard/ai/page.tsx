@@ -14,7 +14,7 @@ interface AIUsage {
   plan: string;
   usageCount: number;
   remaining: number;
-  unlimited: boolean;
+  // unlimited: boolean;
 }
 
 export default function AIGenerationPage() {
@@ -189,7 +189,8 @@ export default function AIGenerationPage() {
               <p>
                 プラン: <span className="font-bold">{aiUsage.plan === "pro" ? "Pro" : "Free"}</span>
               </p>
-              {aiUsage.unlimited ? (
+              {/* //todo *後で直す */}
+              {aiUsage.remaining ? (
                 <p className="text-green-600 font-semibold">無制限に使用可能</p>
               ) : (
                 <>

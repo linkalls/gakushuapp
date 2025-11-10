@@ -222,13 +222,13 @@ export async function generateCardsFromImage(
  * AI使用制限をチェック（Freeプランは月5回まで）
  */
 export function checkAIUsageLimit(
-  plan: string,
+  // plan: string,
   usageCount: number,
   resetAt: number
 ): { allowed: boolean; remaining: number } {
-  if (plan === "pro") {
-    return { allowed: true, remaining: -1 }; // 無制限
-  }
+  // if (plan === "pro") {
+  //   return { allowed: true, remaining: -1 }; // 無制限
+  // }
 
   const now = Date.now();
   const oneMonth = 30 * 24 * 60 * 60 * 1000;

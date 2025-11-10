@@ -15,6 +15,13 @@
       "when": 1762779127315,
       "tag": "0001_same_silver_centurion",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1762789172777,
+      "tag": "0002_fast_hercules",
+      "breakpoints": true
     }
   ]
 }
