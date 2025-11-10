@@ -11,7 +11,6 @@ import {
 } from "chart.js";
 import { useEffect, useState } from "react";
 import { Bar } from "react-chartjs-2";
-import { StudySessionStats } from "@/components/StudySessionStats";
 
 ChartJS.register(
   CategoryScale,
@@ -31,7 +30,7 @@ interface StudySession {
   createdAt: string;
 }
 
-export default function StatsPage() {
+export function StudySessionStats() {
   const [studySessions, setStudySessions] = useState<StudySession[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -57,21 +56,20 @@ export default function StatsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-zinc-600 dark:text-zinc-400">読み込み中...</div>
+      <div className="flex items-center justify-center min-h-[200px]">
+        <div className="text-zinc-600 dark:text-zinc-400">学習データを読み込み中...</div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
+      <div className="flex items-center justify-center min-h-[200px]">
         <div className="text-red-500">{error}</div>
       </div>
     );
   }
 
-  // Calculate stats
   const totalDuration = studySessions.reduce(
     (acc, session) => acc + session.duration,
     0
@@ -88,7 +86,6 @@ export default function StatsPage() {
     return `${hours}時間 ${minutes}分`;
   };
 
-  // Reviews over last 30 days
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
   const last30Days: { [date: string]: number } = {};
@@ -108,7 +105,6 @@ export default function StatsPage() {
       }
     });
 
-  // Daily study chart data
   const studyChartData = {
     labels: Object.keys(last30Days).map((d) => {
       const date = new Date(d);
@@ -144,20 +140,10 @@ export default function StatsPage() {
   };
 
   return (
-    <div className="space-y-8 pb-20">
-      <div>
-        <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-100">
-          学習データ
-        </h1>
-        <p className="text-zinc-600 dark:text-zinc-400 mt-2">
-          学習の進捗を確認しましょう
-        </p>
-      </div>
-
-      {/* Today Stats */}
+    <div className="space-y-8">
       <div className="bg-white dark:bg-zinc-900 rounded-2xl p-8 shadow-sm border border-zinc-200 dark:border-zinc-800">
         <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100 mb-6">
-          総合データ
+          学習セッションのデータ
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div>
@@ -186,8 +172,6 @@ export default function StatsPage() {
           </div>
         </div>
       </div>
-
-      {/* Reviews (Last 30 days) */}
       <div className="bg-white dark:bg-zinc-900 rounded-2xl p-8 shadow-sm border border-zinc-200 dark:border-zinc-800">
         <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100 mb-6">
           過去30日間の学習時間
@@ -196,7 +180,6 @@ export default function StatsPage() {
           <Bar data={studyChartData} options={chartOptions} />
         </div>
       </div>
-      <StudySessionStats />
     </div>
   );
 }

@@ -165,3 +165,18 @@ export const cardTags = sqliteTable(
     pk: primaryKey({ columns: [table.cardId, table.tagId] }),
   })
 );
+
+export const studySessions = sqliteTable("study_sessions", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  deckId: text("deck_id")
+    .notNull()
+    .references(() => decks.id, { onDelete: "cascade" }),
+  duration: integer("duration").notNull(),
+  cardsReviewed: integer("cards_reviewed").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .$defaultFn(() => sql`(unixepoch() * 1000)`)
+    .notNull(),
+});
