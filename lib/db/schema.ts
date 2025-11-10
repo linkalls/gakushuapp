@@ -1,4 +1,4 @@
-// Database Schema Definitions for Gakushu App
+// Database Schema Definitions for gakushukun App
 // Using Bun:SQLite
 
 // export const createTablesSQL = `

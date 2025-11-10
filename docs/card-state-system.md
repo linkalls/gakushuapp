@@ -1,26 +1,26 @@
-# カード状態システムとFSRS統合
+# カード状態システムと FSRS 統合
 
 ## カードの状態 (State)
 
-Gakushuアプリでは、FSRSアルゴリズムを使用してカードの状態を管理しています。
+gakushukunkun アプリでは、FSRS アルゴリズムを使用してカードの状態を管理しています。
 
 ### 状態の種類
 
-| State | 名前 | 説明 | 次の状態への遷移 |
-|-------|------|------|-----------------|
-| 0 | 新規 (New) | まだ一度も学習していないカード | Rating 1-4 → State 1 または 2 |
-| 1 | 学習中 (Learning) | 学習を開始したが、まだ短期記憶段階 | Rating 3-4 → State 2, Rating 1-2 → State 1のまま |
-| 2 | 復習 (Review) | 長期記憶に定着しつつあり、長い間隔で復習 | Rating 1 → State 3, Rating 2-4 → State 2のまま |
-| 3 | 再学習 (Relearning) | 忘れてしまったカードを再学習中 | Rating 3-4 → State 2, Rating 1-2 → State 3のまま |
+| State | 名前                | 説明                                     | 次の状態への遷移                                  |
+| ----- | ------------------- | ---------------------------------------- | ------------------------------------------------- |
+| 0     | 新規 (New)          | まだ一度も学習していないカード           | Rating 1-4 → State 1 または 2                     |
+| 1     | 学習中 (Learning)   | 学習を開始したが、まだ短期記憶段階       | Rating 3-4 → State 2, Rating 1-2 → State 1 のまま |
+| 2     | 復習 (Review)       | 長期記憶に定着しつつあり、長い間隔で復習 | Rating 1 → State 3, Rating 2-4 → State 2 のまま   |
+| 3     | 再学習 (Relearning) | 忘れてしまったカードを再学習中           | Rating 3-4 → State 2, Rating 1-2 → State 3 のまま |
 
 ## レビュー評価 (Rating)
 
-| Rating | ラベル | 説明 | 次回復習時間 |
-|--------|--------|------|------------|
-| 1 | Again | 全く覚えていない | 1分後 |
-| 2 | Hard | 思い出すのが難しい | 数分後 |
-| 3 | Good | 正しく思い出せた | 数日後（Learning）または日数増加（Review） |
-| 4 | Easy | 簡単に思い出せた | より長い間隔 |
+| Rating | ラベル | 説明               | 次回復習時間                               |
+| ------ | ------ | ------------------ | ------------------------------------------ |
+| 1      | Again  | 全く覚えていない   | 1 分後                                     |
+| 2      | Hard   | 思い出すのが難しい | 数分後                                     |
+| 3      | Good   | 正しく思い出せた   | 数日後（Learning）または日数増加（Review） |
+| 4      | Easy   | 簡単に思い出せた   | より長い間隔                               |
 
 ## 統計の定義
 
@@ -28,16 +28,20 @@ Gakushuアプリでは、FSRSアルゴリズムを使用してカードの状態
 
 ```typescript
 // 新規カード: state === 0
-const newCards = cards.filter(c => c.state === 0).length;
+const newCards = cards.filter((c) => c.state === 0).length;
 
 // 学習中カード: state === 1 or 3
-const learningCards = cards.filter(c => c.state === 1 || c.state === 3).length;
+const learningCards = cards.filter(
+  (c) => c.state === 1 || c.state === 3
+).length;
 
 // 復習カード: state === 2
-const reviewCards = cards.filter(c => c.state === 2).length;
+const reviewCards = cards.filter((c) => c.state === 2).length;
 
 // 今日復習するべきカード: due <= now かつ state !== 0
-const dueCards = cards.filter(c => c.state !== 0 && c.due <= Date.now()).length;
+const dueCards = cards.filter(
+  (c) => c.state !== 0 && c.due <= Date.now()
+).length;
 ```
 
 ### 重要な注意点
@@ -45,11 +49,12 @@ const dueCards = cards.filter(c => c.state !== 0 && c.due <= Date.now()).length;
 **「今日」(dueCards)には新規カード(state: 0)を含めない**
 
 理由:
+
 - 新規カードは`due`が現在時刻に設定されているため、技術的には「期限が来ている」
 - しかし、まだ一度も学習していないため、「今日復習するべき」カードとは異なる
 - 新規カードは「新規」として別にカウントし、「今日」には学習中・復習カードのみを含める
 
-## FSRS統合の流れ
+## FSRS 統合の流れ
 
 ### 1. 新規カードの初期化
 
@@ -79,14 +84,16 @@ const { card: updatedCard, log } = reviewCard(dbCard, rating);
 ### 3. 状態遷移の例
 
 **新規カード (state: 0) をレビュー:**
+
 ```
 Rating 1 (Again) → state: 1 (Learning), due: +1分
-Rating 2 (Hard) → state: 1 (Learning), due: +6分  
+Rating 2 (Hard) → state: 1 (Learning), due: +6分
 Rating 3 (Good) → state: 1 (Learning), due: +10分
 Rating 4 (Easy) → state: 2 (Review), due: +8日
 ```
 
 **学習中カード (state: 1) をレビュー:**
+
 ```
 Rating 1 (Again) → state: 1 (Learning), due: +1分
 Rating 2 (Hard) → state: 1 (Learning), due: +数分
@@ -95,6 +102,7 @@ Rating 4 (Easy) → state: 2 (Review), due: +2日
 ```
 
 **復習カード (state: 2) をレビュー:**
+
 ```
 Rating 1 (Again) → state: 3 (Relearning), due: +1分
 Rating 2 (Hard) → state: 2 (Review), due: +短めの間隔
@@ -102,7 +110,7 @@ Rating 3 (Good) → state: 2 (Review), due: +通常の間隔
 Rating 4 (Easy) → state: 2 (Review), due: +長めの間隔
 ```
 
-## API実装
+## API 実装
 
 ### GET /api/decks (with stats)
 
@@ -165,7 +173,9 @@ const cardsList = await db
 const remainingCardsList = cards.slice(currentIndex);
 
 const remainingNew = remainingCardsList.filter((c) => c.state === 0).length;
-const remainingLearning = remainingCardsList.filter((c) => c.state === 1 || c.state === 3).length;
+const remainingLearning = remainingCardsList.filter(
+  (c) => c.state === 1 || c.state === 3
+).length;
 const remainingReview = remainingCardsList.filter((c) => c.state === 2).length;
 ```
 
@@ -185,7 +195,7 @@ const remainingReview = remainingCardsList.filter((c) => c.state === 2).length;
 
 **原因:** 新規カード(state: 0)が「今日」にカウントされている
 
-**解決:** APIの`dueCards`計算で`sql\`${cards.state} != 0\``条件を追加
+**解決:** API の`dueCards`計算で`sql\`${cards.state} != 0\``条件を追加
 
 ### 問題: 学習画面の統計が更新されない
 
@@ -195,14 +205,14 @@ const remainingReview = remainingCardsList.filter((c) => c.state === 2).length;
 
 ### 問題: カードが学習中(state: 1)から変わらない
 
-**原因:** Rating 1または2を選択している（Againまたは Hard）
+**原因:** Rating 1 または 2 を選択している（Again または Hard）
 
-**解決:** これは正常な動作。Rating 3(Good)または4(Easy)を選ぶとstate: 2(Review)に遷移する
+**解決:** これは正常な動作。Rating 3(Good)または 4(Easy)を選ぶと state: 2(Review)に遷移する
 
 ## 更新履歴
 
 - 2025-11-10: 初版作成
   - カード状態システムの定義
-  - FSRS統合の詳細
+  - FSRS 統合の詳細
   - 統計計算ロジックの説明
   - 「今日」(dueCards)から新規カードを除外する修正

@@ -11,7 +11,8 @@ export function getDatabase(): Database {
 
   // Database file location
   const dbPath =
-    process.env.DATABASE_PATH || path.join(process.cwd(), "data", "gakushu.db");
+    process.env.DATABASE_PATH ||
+    path.join(process.cwd(), "data", "gakushukun.db");
 
   // Ensure data directory exists
   const dataDir = path.dirname(dbPath);
@@ -42,7 +43,7 @@ export function getDatabase(): Database {
         )
         .run(
           "demo-user",
-          "demo@gakushu.app",
+          "demo@gakushukun.app",
           "Demo User",
           timestamp,
           timestamp

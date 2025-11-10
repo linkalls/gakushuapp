@@ -1,9 +1,9 @@
 "use client";
 
+import { signIn } from "@/lib/auth-client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { signIn } from "@/lib/auth-client";
 
 export default function Home() {
   const router = useRouter();
@@ -40,7 +40,7 @@ export default function Home() {
       <main className="flex flex-col items-center justify-center gap-8 px-4 py-16">
         <div className="flex flex-col items-center gap-4 text-center">
           <h1 className="text-6xl font-bold bg-linear-to-r from-zinc-900 to-zinc-600 dark:from-zinc-100 dark:to-zinc-400 bg-clip-text text-transparent">
-            Gakushu
+            gakushukun
           </h1>
           <p className="text-xl text-zinc-600 dark:text-zinc-400 max-w-md">
             モダンで美しい間隔反復学習アプリ

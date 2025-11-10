@@ -52,7 +52,7 @@ export default function DashboardLayout({
                   href="/dashboard"
                   className="text-xl font-bold text-zinc-900 dark:text-zinc-100"
                 >
-                  Gakushu
+                  gakushukunkun
                 </Link>
 
                 {/* Desktop Navigation */}

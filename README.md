@@ -1,4 +1,4 @@
-# Gakushu - モダンな間隔反復学習アプリ
+# gakushukun - モダンな間隔反復学習アプリ
 
 Anki の代替となる、美しくて使いやすい間隔反復学習アプリケーションです。科学的に証明された FSRS アルゴリズムを使用して、効率的な学習をサポートします。
 
@@ -23,7 +23,7 @@ Anki の代替となる、美しくて使いやすい間隔反復学習アプリ
 ```bash
 # リポジトリをクローン
 git clone <repository-url>
-cd gakushuapp
+cd gakushukunapp
 
 # 依存関係をインストール
 bun install
@@ -92,7 +92,7 @@ bun dev
 ## 📂 プロジェクト構造
 
 ```
-gakushuapp/
+gakushukunapp/
 ├── app/                    # Next.js App Router
 │   ├── (auth)/            # 認証ページ
 │   ├── (dashboard)/       # ダッシュボードページ

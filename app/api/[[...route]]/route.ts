@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { db, generateId, now } from "@/lib/db/drizzle";
 import * as schema from "@/lib/db/drizzle-schema";
+import { stripe } from "@/lib/stripe";
 import { generateApkg } from "@/lib/utils/apkg-export";
 import { parseApkgFile, type ImportResult } from "@/lib/utils/apkg-import";
 import { getInitialCardState, Rating, reviewCard } from "@/lib/utils/fsrs";
@@ -1573,6 +1574,75 @@ app.get("/study-sessions", async (c) => {
 
   return c.json(data);
 });
+
+// Aggregated study sessions summary (server-side aggregation to avoid timezone issues)
+app.get("/study-sessions/summary", async (c) => {
+  const userSession = await getUserSession(c.req.raw.headers);
+  if (!userSession) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  const userId = userSession.userId;
+
+  const sessions = await db
+    .select()
+    .from(schema.studySessions)
+    .where(eq(schema.studySessions.userId, userId))
+    .orderBy(desc(schema.studySessions.createdAt))
+    .all();
+
+  const totalDuration = sessions.reduce(
+    (acc, s) => acc + Number(s.duration),
+    0
+  );
+  const totalCardsReviewed = sessions.reduce(
+    (acc, s) => acc + Number(s.cardsReviewed),
+    0
+  );
+  const totalSessions = sessions.length;
+
+  // Build last 30 days map by local date
+  const toLocalDateKey = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
+
+  const days: Record<string, { duration: number; cardsReviewed: number }> = {};
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    d.setHours(0, 0, 0, 0);
+    days[toLocalDateKey(d)] = { duration: 0, cardsReviewed: 0 };
+  }
+
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  thirtyDaysAgo.setHours(0, 0, 0, 0);
+
+  sessions
+    .filter((s) => new Date(s.createdAt) >= thirtyDaysAgo)
+    .forEach((s) => {
+      const dateStr = toLocalDateKey(new Date(s.createdAt));
+      if (days[dateStr]) {
+        days[dateStr].duration += Number(s.duration);
+        days[dateStr].cardsReviewed += Number(s.cardsReviewed);
+      }
+    });
+
+  const daySeries = Object.entries(days).map(([date, v]) => ({
+    date,
+    duration: v.duration,
+    cardsReviewed: v.cardsReviewed,
+  }));
+
+  return c.json({
+    totalDuration,
+    totalCardsReviewed,
+    totalSessions,
+    days: daySeries,
+  });
+});
 app.post("/study-sessions", async (c) => {
   const userSession = await getUserSession(c.req.raw.headers);
   if (!userSession) {
@@ -2144,6 +2214,35 @@ app.get("/ai/usage", async (c) => {
     unlimited: user.plan === "pro",
   });
 });
+
+// ============================================
+// stripe checkout
+// ============================================
+
+// app.post("/checkout", async (c) => {
+//   const body = await c.req.json<{ customer_id: string; price_id: string }>();
+
+//   const customer = await stripe.customers.retrieve(body.customer_id);
+//   const session = await stripe.checkout.sessions.create({
+//     payment_method_types: ["card"],
+//     line_items: [
+//       {
+//         price: body.price_id,
+//         quantity: 1,
+//       },
+//     ],
+//     mode: "subscription",
+//     customer: customer.id,
+//     success_url:
+//       process.env.NEXT_PUBLIC_APP_URL+"/dashboard/billing" ||
+//       "http://localhost:3000/dashboard/billing",
+//     cancel_url:
+//       process.env.NEXT_PUBLIC_APP_URL+"/dashboard" || "http://localhost:3000/dashboard" + "/dashboard",
+//   });
+//   return c.json({
+//     checkout_url: session.url,
+//   });
+// });
 
 export const GET = handle(app);
 export const POST = handle(app);

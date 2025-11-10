@@ -1,6 +1,6 @@
+import type { Card, Deck } from "@/lib/db/drizzle-schema";
 import { Database } from "bun:sqlite";
 import JSZip from "jszip";
-import type { Card, Deck, User } from "@/lib/db/drizzle-schema";
 
 // This is a simplified version. A real implementation would need more
 // detailed schema and data mapping from FSRS to Anki's format.
@@ -88,59 +88,67 @@ const defaultModels = {
       },
     ],
     flds: [
-      { name: "Front", ord: 0, sticky: false, rtl: false, font: "Arial", size: 20, media: [] },
-      { name: "Back", ord: 1, sticky: false, rtl: false, font: "Arial", size: 20, media: [] },
+      {
+        name: "Front",
+        ord: 0,
+        sticky: false,
+        rtl: false,
+        font: "Arial",
+        size: 20,
+        media: [],
+      },
+      {
+        name: "Back",
+        ord: 1,
+        sticky: false,
+        rtl: false,
+        font: "Arial",
+        size: 20,
+        media: [],
+      },
     ],
     css: ".card {\n font-family: arial;\n font-size: 20px;\n text-align: center;\n color: black;\n background-color: white;\n}\n",
-    latexPre: "\\documentclass[12pt]{article}\n\\special{papersize=3in,5in}\n\\usepackage[utf8]{inputenc}\n\\usepackage{amssymb,amsmath}\n\\pagestyle{empty}\n\\setlength{\\parindent}{0in}\n\\begin{document}\n",
+    latexPre:
+      "\\documentclass[12pt]{article}\n\\special{papersize=3in,5in}\n\\usepackage[utf8]{inputenc}\n\\usepackage{amssymb,amsmath}\n\\pagestyle{empty}\n\\setlength{\\parindent}{0in}\n\\begin{document}\n",
     latexPost: "\\end{document}",
   },
 };
 const defaultDconf = {
   "1": {
-    "name": "Default",
-    "replayq": true,
-    "lapse": {
-      "leechFails": 8,
-      "minInt": 1,
-      "delays": [
-        10
-      ],
-      "leechAction": 0,
-      "mult": 0
+    name: "Default",
+    replayq: true,
+    lapse: {
+      leechFails: 8,
+      minInt: 1,
+      delays: [10],
+      leechAction: 0,
+      mult: 0,
     },
-    "rev": {
-      "perDay": 200,
-      "ease4": 1.3,
-      "fuzz": 0.05,
-      "maxIvl": 36500,
-      "ivlFct": 1,
-      "bury": true,
-      "hardFactor": 1.2
+    rev: {
+      perDay: 200,
+      ease4: 1.3,
+      fuzz: 0.05,
+      maxIvl: 36500,
+      ivlFct: 1,
+      bury: true,
+      hardFactor: 1.2,
     },
-    "timer": 0,
-    "maxTaken": 60,
-    "usn": 0,
-    "new": {
-      "perDay": 20,
-      "delays": [
-        1,
-        10
-      ],
-      "separate": true,
-      "ints": [
-        1,
-        4,
-        7
-      ],
-      "initialFactor": 2500,
-      "bury": true,
-      "order": 1
+    timer: 0,
+    maxTaken: 60,
+    usn: 0,
+    new: {
+      perDay: 20,
+      delays: [1, 10],
+      separate: true,
+      ints: [1, 4, 7],
+      initialFactor: 2500,
+      bury: true,
+      order: 1,
     },
-    "mod": 0,
-    "id": 1,
-    "autoplay": true
-  }
+    mod: 0,
+    id: 1,
+    autoplay: true,
+  },
 };
 
 /**
@@ -164,9 +172,16 @@ export async function generateApkg(
   // --- Decks ---
   const decksToExport = [deck, ...childDecks];
   const ankiDecks: any = {
-    "1": { id: 1, name: "Default", mod: creationTime, usn: 0, conf: 1, desc: "" },
+    "1": {
+      id: 1,
+      name: "Default",
+      mod: creationTime,
+      usn: 0,
+      conf: 1,
+      desc: "",
+    },
   };
-  const deckIdMap = new Map<string, number>(); // Gakushu ID -> Anki ID
+  const deckIdMap = new Map<string, number>(); // gakushukun ID -> Anki ID
   let ankiDeckIdCounter = 2;
 
   for (const d of decksToExport) {
@@ -218,7 +233,7 @@ export async function generateApkg(
     // Insert Note
     noteStmt.run(
       noteId, // id
-      card.id, // guid (using Gakushu ID for uniqueness)
+      card.id, // guid (using gakushukun ID for uniqueness)
       1, // mid (model ID)
       creationTime, // mod
       0, // usn

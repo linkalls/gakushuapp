@@ -22,30 +22,40 @@ ChartJS.register(
   Legend
 );
 
-interface StudySession {
-  id: string;
-  userId: string;
-  deckId: string;
-  duration: number; // in seconds
-  cardsReviewed: number;
-  createdAt: string;
+interface StudySummary {
+  totalDuration: number;
+  totalCardsReviewed: number;
+  totalSessions: number;
+  days: { date: string; duration: number; cardsReviewed: number }[];
 }
 
 export default function StatsPage() {
-  const [studySessions, setStudySessions] = useState<StudySession[]>([]);
+  const [summary, setSummary] = useState<StudySummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/study-sessions")
+    fetch("/api/study-sessions/summary")
       .then((res) => {
         if (!res.ok) {
-          throw new Error("Failed to fetch study sessions");
+          throw new Error("Failed to fetch study summary");
         }
         return res.json();
       })
       .then((data) => {
-        setStudySessions(data);
+        const normalized: StudySummary = {
+          totalDuration: Number(data.totalDuration) || 0,
+          totalCardsReviewed: Number(data.totalCardsReviewed) || 0,
+          totalSessions: Number(data.totalSessions) || 0,
+          days: Array.isArray(data.days)
+            ? data.days.map((d: any) => ({
+              date: String(d.date),
+              duration: Number(d.duration) || 0,
+              cardsReviewed: Number(d.cardsReviewed) || 0,
+            }))
+            : [],
+        };
+        setSummary(normalized);
         setLoading(false);
       })
       .catch((error) => {
@@ -72,15 +82,9 @@ export default function StatsPage() {
   }
 
   // Calculate stats
-  const totalDuration = studySessions.reduce(
-    (acc, session) => acc + session.duration,
-    0
-  );
-  const totalCardsReviewed = studySessions.reduce(
-    (acc, session) => acc + session.cardsReviewed,
-    0
-  );
-  const totalSessions = studySessions.length;
+  const totalDuration = summary?.totalDuration ?? 0;
+  const totalCardsReviewed = summary?.totalCardsReviewed ?? 0;
+  const totalSessions = summary?.totalSessions ?? 0;
 
   const formatDuration = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
@@ -93,37 +97,37 @@ export default function StatsPage() {
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
   thirtyDaysAgo.setHours(0, 0, 0, 0); // Reset to start of day
 
-  // Initialize last 30 days with 0 values
+  // Initialize last 30 days with 0 values (ローカル日付キー YYYY-MM-DD)
   const last30Days: { [date: string]: number } = {};
+  const toLocalDateKey = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
   for (let i = 29; i >= 0; i--) {
     const date = new Date();
     date.setDate(date.getDate() - i);
     date.setHours(0, 0, 0, 0); // Reset to start of day
-    const dateStr = date.toISOString().split("T")[0];
+    const dateStr = toLocalDateKey(date);
     last30Days[dateStr] = 0;
   }
 
   // Accumulate study durations by date
-  studySessions
-    .filter((s) => new Date(s.createdAt) >= thirtyDaysAgo)
-    .forEach((s) => {
-      const sessionDate = new Date(s.createdAt);
-      // Use local date to avoid timezone issues
-      const year = sessionDate.getFullYear();
-      const month = String(sessionDate.getMonth() + 1).padStart(2, '0');
-      const day = String(sessionDate.getDate()).padStart(2, '0');
-      const dateStr = `${year}-${month}-${day}`;
-
-      if (last30Days[dateStr] !== undefined) {
-        last30Days[dateStr] += s.duration;
+  if (summary) {
+    summary.days.forEach((d) => {
+      if (last30Days[d.date] !== undefined) {
+        last30Days[d.date] = d.duration;
       }
     });
+  }
 
   // Daily study chart data
   const studyChartData = {
     labels: Object.keys(last30Days).map((d) => {
-      const date = new Date(d);
-      return `${date.getMonth() + 1}/${date.getDate()}`;
+      // d は YYYY-MM-DD の文字列（ローカル想定）
+      const [y, m, dd] = d.split("-");
+      return `${Number(m)}/${Number(dd)}`;
     }),
     datasets: [
       {

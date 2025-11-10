@@ -1,25 +1,41 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 type Plan = "free" | "pro";
 
 export default function BillingPage() {
+  const { push } = useRouter();
+
   const [currentPlan, setCurrentPlan] = useState<Plan>("free");
 
-  const handleSelectPlan = (plan: Plan) => {
+  const handleSelectPlan = async (plan: Plan) => {
+
     // This will be replaced with Stripe Checkout logic
-    alert(`「${plan.toUpperCase()}」プランを選択しました。現在は実装準備中です。`);
+    // alert(`「${plan.toUpperCase()}」プランを選択しました。現在は実装準備中です。`);
+    const response = await fetch("/api/checkout", {
+      method: "post",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        customer_id: "cus_TOkAk3XOse8daD",// ここに顧客IDを値に設定しましょう
+        price_id: "price_1SRwepFRLAQ89fziyvwuSTDR", // ここに商品IDを値に設定しましょう
+      }),
+    }).then((data) => data.json());
+    push(response.checkout_url);
   };
 
   return (
+
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-100">
           課金情報
         </h1>
         <p className="text-zinc-600 dark:text-zinc-400 mt-2">
-          プランを選択して、GakushuAppの全機能を開放しましょう。
+          プランを選択して、gakushukunAppの全機能を開放しましょう。
         </p>
       </div>
 
@@ -52,7 +68,7 @@ export default function BillingPage() {
           </p>
           <ul className="space-y-3 text-zinc-600 dark:text-zinc-400 flex-grow">
             <li className="flex items-center gap-2">
-              <span className="text-green-500">✔</span> 無制限デッキ作成 
+              <span className="text-green-500">✔</span> 無制限デッキ作成
             </li>
             <li className="flex items-center gap-2">
               <span className="text-green-500">✔</span> 基本的なFSRS学習
@@ -71,11 +87,11 @@ export default function BillingPage() {
 
         {/* Pro Plan */}
         <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-sm border-2 border-blue-500 p-8 flex flex-col">
-           <div className="text-center">
-             <span className="inline-block bg-blue-500 text-white text-xs font-semibold px-3 py-1 rounded-full mb-4">
-                おすすめ
-             </span>
-           </div>
+          <div className="text-center">
+            <span className="inline-block bg-blue-500 text-white text-xs font-semibold px-3 py-1 rounded-full mb-4">
+              おすすめ
+            </span>
+          </div>
           <h3 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">
             Pro
           </h3>
@@ -102,7 +118,7 @@ export default function BillingPage() {
               <span className="text-blue-500">✔</span>
               <strong>ランキング機能</strong>
             </li>
-             <li className="flex items-center gap-2">
+            <li className="flex items-center gap-2">
               <span className="text-blue-500">✔</span> 優先サポート
             </li>
           </ul>
@@ -114,10 +130,10 @@ export default function BillingPage() {
           </button>
         </div>
       </div>
-       <div className="text-center text-sm text-zinc-500 dark:text-zinc-500">
-          <p>Stripeを利用した安全な決済です。いつでもキャンセルできます。</p>
-          <p className="mt-4">この機能は現在準備中です。ボタンを押しても実際の課金は発生しません。</p>
-       </div>
+      <div className="text-center text-sm text-zinc-500 dark:text-zinc-500">
+        <p>Stripeを利用した安全な決済です。いつでもキャンセルできます。</p>
+        <p className="mt-4">この機能は現在準備中です。ボタンを押しても実際の課金は発生しません。</p>
+      </div>
     </div>
   );
 }

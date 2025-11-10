@@ -1,4 +1,4 @@
-# Gakushu App - 開発進捗レポート
+# gakushukun App - 開発進捗レポート
 
 ## 最終更新日: 2025-11-09
 

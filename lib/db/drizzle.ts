@@ -4,7 +4,7 @@ import path from "path";
 import * as schema from "./drizzle-schema";
 
 // Initialize SQLite database with absolute path
-const dbPath = path.join(process.cwd(), "data", "gakushu.db");
+const dbPath = path.join(process.cwd(), "data", "gakushukun.db");
 const sqlite = new Database(dbPath, { create: true });
 
 // Enable foreign keys

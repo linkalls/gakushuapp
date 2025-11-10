@@ -44,7 +44,7 @@ export default function LoginPage() {
         <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-xl p-8 border border-zinc-200 dark:border-zinc-800">
           <div className="text-center mb-8">
             <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-100 mb-2">
-              Gakushu
+              gakushukun
             </h1>
             <p className="text-zinc-600 dark:text-zinc-400">
               ログインして学習を開始

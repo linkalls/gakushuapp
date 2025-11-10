@@ -5,6 +5,6 @@ export default {
   out: "./drizzle",
   dialect: "sqlite",
   dbCredentials: {
-    url: "./data/gakushu.db",
+    url: "./data/gakushukun.db",
   },
 } satisfies Config;

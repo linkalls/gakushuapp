@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Gakushu",
+  title: "gakushukun",
   description: "A modern flashcard app",
 };
 
