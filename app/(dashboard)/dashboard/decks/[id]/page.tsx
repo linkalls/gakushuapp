@@ -20,6 +20,14 @@ interface Card {
   back: string;
   reps: number;
   due: number;
+  state: number; // 0=New, 1=Learning, 2=Review, 3=Relearning
+}
+
+interface DeckStats {
+  totalCards: number;
+  newCards: number;
+  learningCards: number;
+  reviewCards: number;
 }
 
 interface Tag {
@@ -45,6 +53,12 @@ export default function DeckDetailPage() {
 
   const [deck, setDeck] = useState<Deck | null>(null);
   const [cards, setCards] = useState<Card[]>([]);
+  const [deckStats, setDeckStats] = useState<DeckStats>({
+    totalCards: 0,
+    newCards: 0,
+    learningCards: 0,
+    reviewCards: 0,
+  });
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 20,
@@ -100,6 +114,17 @@ export default function DeckDetailPage() {
       .then((data: PaginatedResponse) => {
         setCards(data.cards);
         setPagination(data.pagination);
+
+        // Calculate state-based stats from all cards
+        const stats = data.cards.reduce((acc, card) => {
+          acc.totalCards++;
+          if (card.state === 0) acc.newCards++;
+          else if (card.state === 1 || card.state === 3) acc.learningCards++;
+          else if (card.state === 2) acc.reviewCards++;
+          return acc;
+        }, { totalCards: 0, newCards: 0, learningCards: 0, reviewCards: 0 });
+
+        setDeckStats(stats);
         setLoading(false);
       })
       .catch((error) => {
@@ -243,9 +268,25 @@ export default function DeckDetailPage() {
                 {deck.description}
               </p>
             )}
-            <p className="text-sm text-zinc-500 dark:text-zinc-500 mt-2">
-              {pagination.total} カード（サブデッキ含む）
-            </p>
+            <div className="mt-3 space-y-2">
+              <p className="text-sm text-zinc-500 dark:text-zinc-500">
+                {pagination.total} カード（サブデッキ含む）
+              </p>
+              <div className="flex items-center gap-4 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full bg-blue-500"></span>
+                  <span className="text-zinc-700 dark:text-zinc-300">新規: <strong>{deckStats.newCards}</strong></span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full bg-yellow-500"></span>
+                  <span className="text-zinc-700 dark:text-zinc-300">学習中: <strong>{deckStats.learningCards}</strong></span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full bg-green-500"></span>
+                  <span className="text-zinc-700 dark:text-zinc-300">復習: <strong>{deckStats.reviewCards}</strong></span>
+                </div>
+              </div>
+            </div>
           </div>
           <div className="flex gap-3">
             <Link

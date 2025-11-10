@@ -12,6 +12,8 @@ interface Card {
   stability: number;
   difficulty: number;
   reps: number;
+  state: number; // 0=New, 1=Learning, 2=Review, 3=Relearning
+  lapses: number;
 }
 
 export default function StudyPage() {
@@ -159,7 +161,7 @@ export default function StudyPage() {
     const newTotalElapsedTime = totalElapsedTime + cardElapsedTime;
 
     try {
-      await fetch("/api/reviews", {
+      const response = await fetch("/api/reviews", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -167,6 +169,24 @@ export default function StudyPage() {
           rating,
         }),
       });
+
+      const result = await response.json();
+
+      // Update card state in local cards array for real-time display
+      if (result.card) {
+        setCards(prevCards => {
+          const newCards = [...prevCards];
+          newCards[currentIndex] = {
+            ...newCards[currentIndex],
+            state: result.card.state,
+            reps: result.card.reps,
+            lapses: result.card.lapses,
+            difficulty: result.card.difficulty,
+            due: result.card.due,
+          };
+          return newCards;
+        });
+      }
 
       // Move to next card or finish
       if (currentIndex + 1 >= cards.length) {
@@ -241,41 +261,99 @@ export default function StudyPage() {
   }
 
   const currentCard = cards[currentIndex];
-  const reviewedCount = currentIndex;
-  const newCardsShown = cards.slice(0, currentIndex).filter((c) => c.reps === 0).length;
-  const newCardsCount = cards.filter((c) => c.reps === 0).length;
-  const reviewCardsCount = cards.length - newCardsCount;
-  const newCardsLeft = newCardsCount - newCardsShown;
-  const reviewCardsLeft = reviewCardsCount - (reviewedCount - newCardsShown);
+
+  // Calculate stats
+  const totalCards = cards.length;
+  const remainingCards = totalCards - currentIndex;
+
+  // Separate cards by state
+  const newCards = cards.filter((c) => c.state === 0);
+  const learningCards = cards.filter((c) => c.state === 1 || c.state === 3);
+  const reviewCards = cards.filter((c) => c.state === 2);
+
+  // Calculate remaining by state
+  const reviewedNew = cards.slice(0, currentIndex).filter((c) => c.state === 0).length;
+  const reviewedLearning = cards.slice(0, currentIndex).filter((c) => c.state === 1 || c.state === 3).length;
+  const reviewedReview = cards.slice(0, currentIndex).filter((c) => c.state === 2).length;
+
+  const remainingNew = Math.max(0, newCards.length - reviewedNew);
+  const remainingLearning = Math.max(0, learningCards.length - reviewedLearning);
+  const remainingReview = Math.max(0, reviewCards.length - reviewedReview);
+
+  // Get current card state label
+  const getStateLabel = (state: number) => {
+    switch (state) {
+      case 0: return "新規";
+      case 1: return "学習中";
+      case 2: return "復習";
+      case 3: return "再学習";
+      default: return "不明";
+    }
+  };
+
+  const getStateColor = (state: number) => {
+    switch (state) {
+      case 0: return "text-blue-600 dark:text-blue-400";
+      case 1: return "text-yellow-600 dark:text-yellow-400";
+      case 2: return "text-green-600 dark:text-green-400";
+      case 3: return "text-orange-600 dark:text-orange-400";
+      default: return "text-zinc-600 dark:text-zinc-400";
+    }
+  };
 
   return (
     <div className="max-w-2xl mx-auto space-y-8">
-      {/* Header with stats in top right */}
+      {/* Header with improved progress display */}
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-100">学習</h1>
-          <p className="text-zinc-600 dark:text-zinc-400 mt-2">
-            {currentIndex + 1} / {cards.length} カード
-          </p>
+          <div className="mt-2 space-y-1">
+            <p className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
+              {currentIndex + 1} / {totalCards}
+            </p>
+            <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium ${currentCard.state === 0 ? "bg-blue-100 dark:bg-blue-900/30" :
+              currentCard.state === 1 ? "bg-yellow-100 dark:bg-yellow-900/30" :
+                currentCard.state === 2 ? "bg-green-100 dark:bg-green-900/30" :
+                  "bg-orange-100 dark:bg-orange-900/30"
+              } ${getStateColor(currentCard.state)}`}>
+              <span className="w-2 h-2 rounded-full bg-current"></span>
+              {getStateLabel(currentCard.state)}
+            </div>
+          </div>
         </div>
 
         {/* Stats in top right */}
-        <div className="text-right">
-          <div className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
+        <div className="text-right space-y-2">
+          <div className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">
             {formatTime(totalElapsedTime + cardElapsedTime)}
           </div>
-          <div className="flex items-center gap-4 text-sm font-medium text-zinc-900 dark:text-zinc-100 mt-1">
-            <span className="text-blue-600 dark:text-blue-400" title="New Cards Left">
-              {newCardsLeft}
-            </span>
-            <span className="text-zinc-400">+</span>
-            <span className="text-green-600 dark:text-green-400" title="Review Cards Left">
-              {reviewCardsLeft}
-            </span>
-            <span className="text-zinc-400">=</span>
-            <span className="text-zinc-900 dark:text-zinc-100" title="Total Left">
-              {cards.length - currentIndex}
-            </span>
+          <div className="space-y-1 text-sm">
+            <div className="flex items-center justify-end gap-2">
+              <span className="text-zinc-500 dark:text-zinc-400">新規:</span>
+              <span className="font-semibold text-blue-600 dark:text-blue-400">
+                {remainingNew}
+              </span>
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <span className="text-zinc-500 dark:text-zinc-400">学習:</span>
+              <span className="font-semibold text-yellow-600 dark:text-yellow-400">
+                {remainingLearning}
+              </span>
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <span className="text-zinc-500 dark:text-zinc-400">復習:</span>
+              <span className="font-semibold text-green-600 dark:text-green-400">
+                {remainingReview}
+              </span>
+            </div>
+            <div className="pt-1 border-t border-zinc-200 dark:border-zinc-700">
+              <div className="flex items-center justify-end gap-2">
+                <span className="text-zinc-500 dark:text-zinc-400">残り:</span>
+                <span className="font-bold text-zinc-900 dark:text-zinc-100">
+                  {remainingCards}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -352,10 +430,12 @@ export default function StudyPage() {
         </div>
       </div>
 
-      <div className="flex items-center justify-center gap-2 text-sm text-zinc-500 dark:text-zinc-500">
+      <div className="flex items-center justify-center gap-4 text-sm text-zinc-500 dark:text-zinc-500">
         <span>復習回数: {currentCard.reps}</span>
         <span>•</span>
         <span>難易度: {currentCard.difficulty.toFixed(1)}</span>
+        <span>•</span>
+        <span>失敗: {currentCard.lapses}</span>
       </div>
     </div>
   );

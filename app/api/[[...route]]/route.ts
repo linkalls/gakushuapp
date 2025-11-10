@@ -560,6 +560,14 @@ app.get("/decks/:deckId/cards", async (c) => {
     .offset(offset)
     .all();
 
+  // Log state distribution for debugging
+  const stateDistribution = cardsList.reduce((acc, card) => {
+    acc[card.state] = (acc[card.state] || 0) + 1;
+    return acc;
+  }, {} as Record<number, number>);
+
+  console.log(`Deck ${deckId} cards - State distribution:`, stateDistribution);
+
   return c.json({
     cards: cardsList,
     pagination: {
@@ -781,6 +789,17 @@ app.post("/reviews", async (c) => {
 
   // Update card with FSRS data
   const timestamp = new Date();
+
+  console.log("Updating card in database:", {
+    cardId: body.cardId,
+    due: updatedCardData.due,
+    state: updatedCardData.state,
+    stability: updatedCardData.stability,
+    difficulty: updatedCardData.difficulty,
+    reps: updatedCardData.reps,
+    lapses: updatedCardData.lapses,
+  });
+
   await db
     .update(cards)
     .set({
@@ -812,6 +831,13 @@ app.post("/reviews", async (c) => {
     .from(cards)
     .where(eq(cards.id, body.cardId))
     .get();
+
+  console.log("Card after DB update:", {
+    cardId: updatedCard?.id,
+    state: updatedCard?.state,
+    due: updatedCard?.due,
+    reps: updatedCard?.reps,
+  });
 
   return c.json({ card: updatedCard, log });
 });

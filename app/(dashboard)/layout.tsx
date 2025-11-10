@@ -11,9 +11,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { signOut, useSession } from "@/lib/auth-client";
-import { User as UserIcon } from "lucide-react";
+import { Menu, User as UserIcon, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 
 export default function DashboardLayout({
   children,
@@ -22,11 +23,23 @@ export default function DashboardLayout({
 }) {
   const router = useRouter();
   const { data: session } = useSession();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleLogout = async () => {
     await signOut();
     router.push("/login");
   };
+
+  const navLinks = [
+    { href: "/dashboard", label: "ダッシュボード" },
+    { href: "/dashboard/decks", label: "デッキ" },
+    { href: "/dashboard/ai", label: "AI生成" },
+    { href: "/dashboard/ranking", label: "ランキング" },
+    { href: "/dashboard/tags", label: "タグ" },
+    { href: "/dashboard/search", label: "検索" },
+    { href: "/dashboard/stats", label: "統計" },
+    { href: "/dashboard/import", label: "インポート" },
+  ];
 
   return (
     <AuthGuard>
@@ -41,58 +54,23 @@ export default function DashboardLayout({
                 >
                   Gakushu
                 </Link>
+
+                {/* Desktop Navigation */}
                 <div className="hidden md:flex gap-6">
-                  <Link
-                    href="/dashboard"
-                    className="text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
-                  >
-                    ダッシュボード
-                  </Link>
-                  <Link
-                    href="/dashboard/decks"
-                    className="text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
-                  >
-                    デッキ
-                  </Link>
-                  <Link
-                    href="/dashboard/ai"
-                    className="text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
-                  >
-                    AI生成
-                  </Link>
-                  <Link
-                    href="/dashboard/ranking"
-                    className="text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
-                  >
-                    ランキング
-                  </Link>
-                  <Link
-                    href="/dashboard/tags"
-                    className="text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
-                  >
-                    タグ
-                  </Link>
-                  <Link
-                    href="/dashboard/search"
-                    className="text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
-                  >
-                    検索
-                  </Link>
-                  <Link
-                    href="/dashboard/stats"
-                    className="text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
-                  >
-                    統計
-                  </Link>
-                  <Link
-                    href="/dashboard/import"
-                    className="text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
-                  >
-                    インポート
-                  </Link>
+                  {navLinks.map((link) => (
+                    <Link
+                      key={link.href}
+                      href={link.href}
+                      className="text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
+                    >
+                      {link.label}
+                    </Link>
+                  ))}
                 </div>
               </div>
+
               <div className="flex items-center gap-4">
+                {/* User Dropdown */}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
@@ -128,8 +106,38 @@ export default function DashboardLayout({
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
+
+                {/* Mobile Menu Button */}
+                <button
+                  onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                  className="md:hidden p-2 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
+                >
+                  {mobileMenuOpen ? (
+                    <X className="w-6 h-6" />
+                  ) : (
+                    <Menu className="w-6 h-6" />
+                  )}
+                </button>
               </div>
             </div>
+
+            {/* Mobile Navigation */}
+            {mobileMenuOpen && (
+              <div className="md:hidden py-4 border-t border-zinc-200 dark:border-zinc-800">
+                <div className="flex flex-col space-y-3">
+                  {navLinks.map((link) => (
+                    <Link
+                      key={link.href}
+                      href={link.href}
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors px-2 py-2"
+                    >
+                      {link.label}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </nav>
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
