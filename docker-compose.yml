@@ -8,7 +8,6 @@ services:
       - "3000:3000"
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=file:./data/gakushukun.db
     restart: unless-stopped
 
 # 使い方:
