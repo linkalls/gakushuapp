@@ -11,6 +11,7 @@ WORKDIR /app
 # Install dependencies with bun
 FROM base AS deps
 COPY package.json bun.lock* ./
+RUN apt-get update && apt-get install -y python3 build-essential
 RUN bun install
 
 
