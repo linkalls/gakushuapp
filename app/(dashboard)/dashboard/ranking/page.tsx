@@ -1,3 +1,6 @@
+
+
+// (server component)
 "use client";
 
 import { useSession } from "@/lib/auth-client"; // Assuming you have a client-side auth hook
