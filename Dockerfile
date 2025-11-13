@@ -11,6 +11,7 @@ WORKDIR /app
 # Install dependencies with bun
 FROM base AS deps
 COPY package.json bun.lock* ./
+RUN bun install
 
 
 # Rebuild the source code only when needed
