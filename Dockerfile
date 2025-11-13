@@ -1,45 +1,54 @@
-# --- Base Stage ---
-# Use the official Bun image. The slim version is smaller.
-FROM oven/bun:1-slim AS base
+# -----------------------------------------------------------------------------
+# This Dockerfile.bun is specifically configured for projects using Bun
+# For npm/pnpm or yarn, refer to the Dockerfile instead
+# -----------------------------------------------------------------------------
+
+# Use Bun's official image
+FROM oven/bun:1 AS base
+
 WORKDIR /app
 
-# --- Install Dependencies Stage ---
-# This stage is dedicated to installing dependencies.
-# It's a separate stage to leverage Docker's layer caching.
-# It will only be re-run if package.json or bun.lockb changes.
-FROM base AS install
-# Install runtime + native build dependencies required to compile native modules
-# `better-sqlite3` requires node-gyp/python and build tools during installation.
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends \
-  openssl \
-  ca-certificates \
-  python3 \
-  python3-dev \
-  build-essential \
-  g++ \
-  make \
-  pkg-config \
-  libsqlite3-dev \
-  && rm -rf /var/lib/apt/lists/*
+# Install dependencies with bun
+FROM base AS deps
+COPY package.json bun.lock* ./
+RUN bun install --no-save --frozen-lockfile
 
-# Copy files required for installation
-COPY package.json bun.lock tsconfig.json next.config.ts ./
-
-# Install dependencies using Bun.
-# --frozen-lockfile ensures that the exact versions from bun.lockb are installed.
-RUN bun install
-
-# --- Runner Stage (Final Image) ---
-# This is the final image that will be used to run the application.
-FROM base AS runner
-COPY --from=install /app/node_modules ./node_modules
+# Rebuild the source code only when needed
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Next.js runs on port 3000 by default.
+# Next.js collects completely anonymous telemetry data about general usage.
+# Learn more here: https://nextjs.org/telemetry
+# Uncomment the following line in case you want to disable telemetry during the build.
+# ENV NEXT_TELEMETRY_DISABLED=1
+
+RUN bun run build
+
+# Production image, copy all the files and run next
+FROM base AS runner
+WORKDIR /app
+
+# Uncomment the following line in case you want to disable telemetry during runtime.
+# ENV NEXT_TELEMETRY_DISABLED=1
+
+ENV NODE_ENV=production \
+  PORT=3000 \
+  HOSTNAME="0.0.0.0"
+
+RUN addgroup --system --gid 1001 nodejs && \
+  adduser --system --uid 1001 nextjs
+
+COPY --from=builder /app/public ./public
+
+# Automatically leverage output traces to reduce image size
+# https://nextjs.org/docs/advanced-features/output-file-tracing
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+USER nextjs
+
 EXPOSE 3000
 
-# The command to start the Next.js development server using Bun.
-# The user mentioned `bun --bun`, which is for running the dev server.
-# `bun run dev` will execute the "dev" script from package.json.
-CMD ["bun", "start"]
+CMD ["bun","--bun", "./server.js"]
