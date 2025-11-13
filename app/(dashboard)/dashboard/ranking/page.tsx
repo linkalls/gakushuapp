@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useSession } from "@/lib/auth-client"; // Assuming you have a client-side auth hook
+import { useEffect, useState } from "react";
 
 interface RankingUser {
   userId: string;
@@ -14,7 +14,8 @@ export default function RankingPage() {
   const [ranking, setRanking] = useState<RankingUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { session } = useSession(); // Get current user's session
+  const { data } = useSession(); // Better Auth returns data with session
+  const session = data?.session;
 
   useEffect(() => {
     fetchRanking();
@@ -81,7 +82,8 @@ export default function RankingPage() {
         <ul className="divide-y divide-zinc-200 dark:divide-zinc-800">
           {ranking.map((user, index) => {
             const rank = index + 1;
-            const isCurrentUser = session?.user?.id === user.userId;
+            const currentUserId = data?.user?.id ?? session?.userId;
+            const isCurrentUser = currentUserId === user.userId;
 
             return (
               <li
@@ -119,11 +121,11 @@ export default function RankingPage() {
           })}
         </ul>
         {ranking.length === 0 && (
-           <div className="p-12 text-center">
-             <p className="text-zinc-600 dark:text-zinc-400">
-               まだ誰もレビューをしていません。最初のレビュアーになろう！
-             </p>
-           </div>
+          <div className="p-12 text-center">
+            <p className="text-zinc-600 dark:text-zinc-400">
+              まだ誰もレビューをしていません。最初のレビュアーになろう！
+            </p>
+          </div>
         )}
       </div>
     </div>
