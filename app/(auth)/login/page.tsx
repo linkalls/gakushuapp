@@ -123,6 +123,15 @@ export default function LoginPage() {
             </div>
           </div>
         </div>
+        <div className="mt-6 text-center text-sm">
+          <a href="/terms" className="text-zinc-500 dark:text-zinc-400 hover:underline">
+            利用規約
+          </a>
+          <span className="mx-2 text-zinc-500 dark:text-zinc-400">·</span>
+          <a href="/privacy" className="text-zinc-500 dark:text-zinc-400 hover:underline">
+            プライバシーポリシー
+          </a>
+        </div>
       </div>
     </div>
   );

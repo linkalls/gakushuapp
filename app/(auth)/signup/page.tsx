@@ -143,9 +143,18 @@ export default function SignupPage() {
             <div className="text-xs text-zinc-500 dark:text-zinc-500 space-y-1">
               <p>✨ FSRS アルゴリズム搭載</p>
               <p>📊 詳細な学習統計</p>
-              <p>�� Dark Mode 対応</p>
+              <p>🌓 Dark Mode 対応</p>
             </div>
           </div>
+        </div>
+        <div className="mt-6 text-center text-sm text-zinc-500 dark:text-zinc-400">
+          <a href="/terms" className="hover:underline">
+            利用規約
+          </a>
+          <span className="mx-2">·</span>
+          <a href="/privacy" className="hover:underline">
+            プライバシーポリシー
+          </a>
         </div>
       </div>
     </div>
