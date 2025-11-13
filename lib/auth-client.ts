@@ -1,5 +1,7 @@
+import { stripeClient } from "@better-auth/stripe/client";
+import { anonymousClient } from "better-auth/client/plugins"
 import { createAuthClient } from "better-auth/react";
-import { stripeClient } from "@better-auth/stripe/client"
+
 
 
 export const authClient = createAuthClient({
@@ -7,7 +9,8 @@ export const authClient = createAuthClient({
    plugins: [
         stripeClient({
             subscription: true //if you want to enable subscription management
-        })
+        }),
+        anonymousClient()
     ]
 });
 

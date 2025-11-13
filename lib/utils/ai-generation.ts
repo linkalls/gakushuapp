@@ -14,6 +14,13 @@ export interface GeneratedCard {
   back: string;
 }
 
+export type CardType = "qa" | "true-false" | "detailed";
+
+export interface GenerationOptions {
+  customPrompt?: string;
+  cardType?: CardType;
+}
+
 // Zodスキーマでカードの構造を定義
 const cardSchema = z.object({
   front: z.string().describe("カードの表面（質問）"),
@@ -24,19 +31,39 @@ const cardsResponseSchema = z.object({
   cards: z.array(cardSchema).describe("生成されたフラッシュカードの配列"),
 });
 
+function getCardTypeInstructions(cardType: CardType): string {
+  switch (cardType) {
+    case "qa":
+      return "各カードは簡潔な「一問一答」形式にしてください。質問は明確で、答えは端的に。";
+    case "true-false":
+      return "各カードは「正誤問題」形式にしてください。表面に陳述文を、裏面に正解(○/×)と簡単な解説を記載。";
+    case "detailed":
+      return "各カードは「詳細な解説」形式にしてください。質問と、理解を深める詳しい答えを記載。";
+    default:
+      return "各カードは「質問」と「答え」の形式にしてください。";
+  }
+}
+
 /**
  * テキストからカードを生成
  */
 export async function generateCardsFromText(
   text: string,
-  count: number = 10
+  count: number = 10,
+  options?: GenerationOptions
 ): Promise<GeneratedCard[]> {
-  const prompt = `以下のテキストから、学習に適した${count}枚のフラッシュカードを生成してください。
-各カードは「質問」と「答え」の形式にしてください。
-重要な概念、用語、事実を抽出し、効果的に記憶できるような質問を作成してください。
+  const cardType = options?.cardType || "detailed";
+  const typeInstructions = getCardTypeInstructions(cardType);
 
-テキスト:
-${text}`;
+  const basePrompt = `以下のテキストから、学習に適した${count}枚のフラッシュカードを生成してください。
+${typeInstructions}
+重要な概念、用語、事実を抽出し、効果的に記憶できるような質問を作成してください。`;
+
+  const customInstructions = options?.customPrompt
+    ? `\n\n追加の指示:\n${options.customPrompt}`
+    : "";
+
+  const prompt = `${basePrompt}${customInstructions}\n\nテキスト:\n${text}`;
 
   const response = await openai.chat.completions.create({
     model: "gpt-4o-mini",
@@ -67,7 +94,8 @@ ${text}`;
  */
 export async function generateCardsFromPDF(
   pdfBuffer: File,
-  count: number = 10
+  count: number = 10,
+  options?: GenerationOptions
 ): Promise<GeneratedCard[]> {
   let tmpFile: string | undefined;
   let pdfPath: string | undefined;
@@ -78,8 +106,18 @@ export async function generateCardsFromPDF(
     console.log("[AI-PDF] File size:", pdfBuffer.size);
     console.log("[AI-PDF] File type:", pdfBuffer.type);
 
-    const prompt = `このPDFを分析し、学習に適した${count}枚のフラッシュカードを生成してください。
-PDFに含まれる情報(テキスト、図、グラフなど)から、重要な内容を抽出して質問と答えの形式にしてください。`;
+    const cardType = options?.cardType || "detailed";
+    const typeInstructions = getCardTypeInstructions(cardType);
+
+    const basePrompt = `このPDFを分析し、学習に適した${count}枚のフラッシュカードを生成してください。
+${typeInstructions}
+PDFに含まれる情報(テキスト、図、グラフなど)から、重要な内容を抽出してください。`;
+
+    const customInstructions = options?.customPrompt
+      ? `\n\n追加の指示:\n${options.customPrompt}`
+      : "";
+
+    const prompt = `${basePrompt}${customInstructions}`;
 
     // Create temp directory and file
     console.log("[AI-PDF] Creating temp directory...");
@@ -219,30 +257,34 @@ export async function generateCardsFromImage(
 }
 
 /**
- * AI使用制限をチェック（Freeプランは月5回まで）
+ * AI使用制限をチェック（サブスクリプションベース）
+ * Free: 月10回, Lite: 月50回, Pro: 月100回
  */
 export function checkAIUsageLimit(
-  // plan: string,
+  plan: string,
   usageCount: number,
   resetAt: number
-): { allowed: boolean; remaining: number } {
-  // if (plan === "pro") {
-  //   return { allowed: true, remaining: -1 }; // 無制限
-  // }
+): { allowed: boolean; remaining: number; limit: number } {
+  const limits: Record<string, number> = {
+    free: 10,
+    lite: 50,
+    pro: 100,
+  };
 
+  const limit = limits[plan] || limits.free;
   const now = Date.now();
   const oneMonth = 30 * 24 * 60 * 60 * 1000;
 
   // リセット期間が過ぎていたらリセット
   if (now - resetAt > oneMonth) {
-    return { allowed: true, remaining: 5 };
+    return { allowed: true, remaining: limit, limit };
   }
 
-  const limit = 5;
   const remaining = limit - usageCount;
 
   return {
     allowed: remaining > 0,
     remaining: Math.max(0, remaining),
+    limit,
   };
 }

@@ -14,29 +14,24 @@ export default function Home() {
     setIsDemoLoading(true);
     setError(null);
     try {
-      const result = await signIn.email({
-        email: "demo@example.com",
-        password: "password123",
-      })
+      const result = await signIn.anonymous();
 
       if (result?.error) {
-        setError(
-          "デモユーザーのログインに失敗しました。ユーザーが存在しないか、パスワードが異なります。"
-        );
+        setError("匿名でのログインに失敗しました。");
         setIsDemoLoading(false);
       } else {
         // signIn should handle the redirect on success
         router.push("/dashboard");
       }
     } catch (error) {
-      console.error("Demo login request failed:", error);
+      console.error("Anonymous login request failed:", error);
       setError("予期せぬエラーが発生しました。");
       setIsDemoLoading(false);
     }
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-linear-to-br from-zinc-50 to-zinc-100 dark:from-zinc-950 dark:to-black">
+    <div className="flex flex-col min-h-screen items-center justify-center bg-linear-to-br from-zinc-50 to-zinc-100 dark:from-zinc-950 dark:to-black">
       <main className="flex flex-col items-center justify-center gap-8 px-4 py-16">
         <div className="flex flex-col items-center gap-4 text-center">
           <h1 className="text-6xl font-bold bg-linear-to-r from-zinc-900 to-zinc-600 dark:from-zinc-100 dark:to-zinc-400 bg-clip-text text-transparent">
@@ -73,20 +68,6 @@ export default function Home() {
           </button>
         </div>
 
-        <div className="mt-4 text-center text-sm text-zinc-500">
-          <p>
-            「今すぐ試してみる」には、デモアカウント (demo@example.com /
-            password123) が必要です。
-          </p>
-          <p>
-            アカウントがない場合は、
-            <Link href="/signup" className="underline hover:text-zinc-800 dark:hover:text-zinc-200">
-              サインアップ
-            </Link>
-            から作成してください。
-          </p>
-        </div>
-
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-12 max-w-4xl">
           <div className="flex flex-col items-center gap-3 p-6 rounded-2xl bg-white dark:bg-zinc-900 shadow-sm">
             <div className="text-4xl">🎯</div>
@@ -113,6 +94,17 @@ export default function Home() {
           </div>
         </div>
       </main>
+      <footer className="w-full text-center py-8 px-4">
+        <div className="text-sm text-zinc-500 dark:text-zinc-400">
+          <Link href="/terms" className="hover:underline">
+            利用規約
+          </Link>
+          <span className="mx-2">·</span>
+          <Link href="/privacy" className="hover:underline">
+            プライバシーポリシー
+          </Link>
+        </div>
+      </footer>
     </div>
   );
 }

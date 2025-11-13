@@ -24,7 +24,6 @@ export const users = sqliteTable("users", {
     .$onUpdateFn(() => sql`(unixepoch() * 1000)`)
     .notNull(),
 
- 
   aiUsageCount: integer("ai_usage_count").default(0).notNull(),
   aiUsageResetAt: integer("ai_usage_reset_at").default(0).notNull(),
 
@@ -32,6 +31,11 @@ export const users = sqliteTable("users", {
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
   stripeSubscriptionStatus: text("stripe_subscription_status"),
+
+  // --anonymous user flag--
+  isAnonymous: integer("is_anonymous", { mode: "boolean" })
+    .default(false)
+    .notNull(),
 });
 
 export const sessions = sqliteTable("sessions", {
@@ -100,18 +104,18 @@ export const subscriptions = sqliteTable("subscriptions", {
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
   status: text("status").notNull(),
-  periodStart: integer("period_start", { mode: "timestamp_ms" }),
-  periodEnd: integer("period_end", { mode: "timestamp_ms" }),
+  periodStart: integer("period_start", { mode: "timestamp" }),
+  periodEnd: integer("period_end", { mode: "timestamp" }),
   cancelAtPeriodEnd: integer("cancel_at_period_end", { mode: "boolean" }),
   seats: integer("seats"),
-  trialStart: integer("trial_start", { mode: "timestamp_ms" }),
-  trialEnd: integer("trial_end", { mode: "timestamp_ms" }),
-  createdAt: integer("created_at", { mode: "timestamp_ms" })
-    .$defaultFn(() => sql`(unixepoch() * 1000)`)
+  trialStart: integer("trial_start", { mode: "timestamp" }),
+  trialEnd: integer("trial_end", { mode: "timestamp" }),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .$defaultFn(() => new Date())
     .notNull(),
-  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
-    .$defaultFn(() => sql`(unixepoch() * 1000)`)
-    .$onUpdateFn(() => sql`(unixepoch() * 1000)`)
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .$defaultFn(() => new Date())
+    .$onUpdateFn(() => new Date())
     .notNull(),
 });
 

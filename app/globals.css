@@ -1,6 +1,10 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* custom variant and theme blocks commented out to avoid parser errors
+   These are Tailwind/PostCSS directives; re-enable or adapt when the
+   build tooling supports them.
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -42,6 +46,7 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 }
+*/
 
 :root {
   --radius: 0.625rem;
@@ -114,9 +119,10 @@
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    box-sizing: border-box;
   }
   body {
-    @apply bg-background text-foreground;
+    background: var(--background);
+    color: var(--foreground);
   }
 }

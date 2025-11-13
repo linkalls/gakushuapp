@@ -3,6 +3,9 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { authClient } from "@/lib/auth-client";
+import { PLAN_LIMITS, type SubscriptionPlan } from "@/lib/billing";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 interface Deck {
@@ -10,31 +13,36 @@ interface Deck {
   name: string;
 }
 
-interface AIUsage {
-  plan: string;
-  usageCount: number;
-  remaining: number;
-  // unlimited: boolean;
+interface SubscriptionInfo {
+  plan: SubscriptionPlan;
+  status: string;
+  periodEnd: Date | null; // Dateオブジェクト
+  cancelAtPeriodEnd: boolean | null;
 }
 
 export default function AIGenerationPage() {
   const [decks, setDecks] = useState<Deck[]>([]);
   const [selectedDeckId, setSelectedDeckId] = useState<string>("");
-  const [aiUsage, setAIUsage] = useState<AIUsage | null>(null);
+  const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
+  const [usageCount, setUsageCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
 
   // Text generation
   const [text, setText] = useState("");
   const [textCount, setTextCount] = useState(10);
+  const [customPrompt, setCustomPrompt] = useState("");
+  const [cardType, setCardType] = useState<"qa" | "true-false" | "detailed">("detailed");
 
   // File upload
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [fileCount, setFileCount] = useState(10);
+  const [fileCustomPrompt, setFileCustomPrompt] = useState("");
+  const [fileCardType, setFileCardType] = useState<"qa" | "true-false" | "detailed">("detailed");
 
   useEffect(() => {
     loadDecks();
-    loadAIUsage();
+    loadSubscription();
   }, []);
 
   const loadDecks = async () => {
@@ -52,21 +60,94 @@ export default function AIGenerationPage() {
     }
   };
 
-  const loadAIUsage = async () => {
+  const loadSubscription = async () => {
     try {
-      const response = await fetch("/api/ai/usage");
-      if (response.ok) {
-        const data = await response.json();
-        setAIUsage(data);
+      const { data: subscriptions } = await authClient.subscription.list({});
+
+      let plan: SubscriptionPlan = "free";
+      let status = "none";
+      let periodEnd: Date | null = null;
+      let cancelAtPeriodEnd: boolean | null = null;
+
+      if (subscriptions && subscriptions.length > 0) {
+        const activeSub = subscriptions.find(
+          (sub) => sub.status === "active" || sub.status === "trialing"
+        );
+
+        if (activeSub) {
+          plan = activeSub.plan as SubscriptionPlan;
+          status = activeSub.status;
+          // periodEndはDateオブジェクトで返ってくる
+          periodEnd = activeSub.periodEnd ? new Date(activeSub.periodEnd) : null;
+          cancelAtPeriodEnd = activeSub.cancelAtPeriodEnd ?? null;
+        }
+      }
+
+      setSubscription({
+        plan,
+        status,
+        periodEnd,
+        cancelAtPeriodEnd,
+      });
+
+      // DBから実際の使用回数を取得
+      const sessionResponse = await authClient.getSession();
+      if (sessionResponse.data?.user) {
+        const user = sessionResponse.data.user as any;
+        const now = Date.now();
+        const oneMonth = 30 * 24 * 60 * 60 * 1000;
+        const aiUsageResetAt = user.aiUsageResetAt || 0;
+        const shouldReset = now - aiUsageResetAt > oneMonth;
+
+        // 月次リセットが必要な場合は0、そうでなければ現在のカウント
+        setUsageCount(shouldReset ? 0 : (user.aiUsageCount || 0));
+      } else {
+        setUsageCount(0);
       }
     } catch (error) {
-      console.error("Failed to load AI usage:", error);
+      console.error("Failed to load subscription:", error);
+      // Set default free plan on error
+      setSubscription({
+        plan: "free",
+        status: "none",
+        periodEnd: null,
+        cancelAtPeriodEnd: null,
+      });
     }
+  };
+
+  const getPlanLimits = () => {
+    if (!subscription) return null;
+    return PLAN_LIMITS[subscription.plan];
+  };
+
+  const getUsageStats = () => {
+    if (!subscription) return null;
+    const limits = PLAN_LIMITS[subscription.plan];
+    const remaining = limits.aiGenerationsPerMonth - usageCount;
+    return {
+      limit: limits.aiGenerationsPerMonth,
+      remaining: remaining > 0 ? remaining : 0,
+    };
   };
 
   const handleGenerateFromText = async () => {
     if (!text.trim() || !selectedDeckId) {
       alert("テキストとデッキを選択してください");
+      return;
+    }
+
+    const limits = getPlanLimits();
+    if (limits && text.length > limits.textInputMaxChars) {
+      alert(
+        `テキストが長すぎます。現在のプラン(${subscription?.plan})では${limits.textInputMaxChars.toLocaleString()}文字までです。\n入力文字数: ${text.length.toLocaleString()}文字`
+      );
+      return;
+    }
+
+    const stats = getUsageStats();
+    if (stats && stats.remaining <= 0) {
+      alert("今月のAI生成回数の上限に達しました。プランをアップグレードしてください。");
       return;
     }
 
@@ -79,14 +160,18 @@ export default function AIGenerationPage() {
           text,
           deckId: selectedDeckId,
           count: textCount,
+          customPrompt: customPrompt || undefined,
+          cardType,
         }),
       });
 
       if (response.ok) {
         const data = await response.json();
-        alert(`成功！${data.cardsGenerated}枚のカードを生成しました。`);
+        alert(`成功！${data.cardsGenerated}枚のカードを生成しました。\n残り: ${data.remaining}/${data.limit}回`);
         setText("");
-        loadAIUsage();
+        setCustomPrompt("");
+        // DBから最新の使用回数を再取得
+        await loadSubscription();
       } else {
         const error = await response.json();
         alert(`エラー: ${error.error || error.message}`);
@@ -105,12 +190,32 @@ export default function AIGenerationPage() {
       return;
     }
 
+    const limits = getPlanLimits();
+    const fileSizeMB = pdfFile.size / (1024 * 1024);
+
+    if (limits && fileSizeMB > limits.pdfMaxSizeMB) {
+      alert(
+        `PDFファイルが大きすぎます。現在のプラン(${subscription?.plan})では${limits.pdfMaxSizeMB}MBまでです。\nファイルサイズ: ${fileSizeMB.toFixed(2)}MB`
+      );
+      return;
+    }
+
+    const stats = getUsageStats();
+    if (stats && stats.remaining <= 0) {
+      alert("今月のAI生成回数の上限に達しました。プランをアップグレードしてください。");
+      return;
+    }
+
     setIsLoading(true);
     try {
       const formData = new FormData();
       formData.append("file", pdfFile);
       formData.append("deckId", selectedDeckId);
       formData.append("count", fileCount.toString());
+      if (fileCustomPrompt) {
+        formData.append("customPrompt", fileCustomPrompt);
+      }
+      formData.append("cardType", fileCardType);
 
       const response = await fetch("/api/ai/generate/pdf", {
         method: "POST",
@@ -119,9 +224,11 @@ export default function AIGenerationPage() {
 
       if (response.ok) {
         const data = await response.json();
-        alert(`成功！${data.cardsGenerated}枚のカードを生成しました。`);
+        alert(`成功！${data.cardsGenerated}枚のカードを生成しました。\n残り: ${data.remaining}/${data.limit}回`);
         setPdfFile(null);
-        loadAIUsage();
+        setFileCustomPrompt("");
+        // DBから最新の使用回数を再取得
+        await loadSubscription();
       } else {
         const error = await response.json();
         alert(`エラー: ${error.error || error.message}`);
@@ -137,6 +244,12 @@ export default function AIGenerationPage() {
   const handleGenerateFromImage = async () => {
     if (!imageFile || !selectedDeckId) {
       alert("画像ファイルとデッキを選択してください");
+      return;
+    }
+
+    const stats = getUsageStats();
+    if (stats && stats.remaining <= 0) {
+      alert("今月のAI生成回数の上限に達しました。プランをアップグレードしてください。");
       return;
     }
 
@@ -156,7 +269,8 @@ export default function AIGenerationPage() {
         const data = await response.json();
         alert(`成功！${data.cardsGenerated}枚のカードを生成しました。`);
         setImageFile(null);
-        loadAIUsage();
+        // DBから最新の使用回数を再取得
+        await loadSubscription();
       } else {
         const error = await response.json();
         alert(`エラー: ${error.error || error.message}`);
@@ -169,6 +283,9 @@ export default function AIGenerationPage() {
     }
   };
 
+  const limits = getPlanLimits();
+  const stats = getUsageStats();
+
   return (
     <div className="container mx-auto p-6 max-w-5xl">
       <div className="mb-6">
@@ -179,33 +296,104 @@ export default function AIGenerationPage() {
       </div>
 
       {/* AI Usage Stats */}
-      {aiUsage && (
+      {subscription && limits && stats && (
         <Card className="mb-6">
           <CardHeader>
             <CardTitle>AI 使用状況</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
-              <p>
-                プラン: <span className="font-bold">{aiUsage.plan === "pro" ? "Pro" : "Free"}</span>
-              </p>
-              {/* //todo *後で直す */}
-              {aiUsage.remaining ? (
-                <p className="text-green-600 font-semibold">無制限に使用可能</p>
-              ) : (
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <span>プラン:</span>
+                <span className="font-bold capitalize">
+                  {subscription.plan === "free" ? "Free" : subscription.plan === "lite" ? "Lite" : "Pro"}
+                </span>
+              </div>
+
+              {subscription.status !== "none" && (
                 <>
-                  <p>
-                    今月の使用回数: {aiUsage.usageCount} / 5
-                  </p>
-                  <p>
-                    残り回数: <span className="font-bold">{aiUsage.remaining}</span>
-                  </p>
-                  {aiUsage.remaining === 0 && (
-                    <p className="text-red-600">
-                      制限に達しました。Pro プランにアップグレードすると無制限に使用できます。
-                    </p>
+                  <div className="flex justify-between items-center text-sm">
+                    <span>ステータス:</span>
+                    <span className={`font-medium ${subscription.status === "active" ? "text-green-600" :
+                      subscription.status === "trialing" ? "text-blue-600" :
+                        "text-gray-600"
+                      }`}>
+                      {subscription.status === "active" ? "有効" :
+                        subscription.status === "trialing" ? "トライアル中" :
+                          subscription.status}
+                    </span>
+                  </div>
+                  {subscription.periodEnd && (
+                    <div className="flex justify-between items-center text-sm">
+                      <span>次回更新日:</span>
+                      <span>{new Date(subscription.periodEnd).toLocaleDateString('ja-JP')}</span>
+                    </div>
+                  )}
+                  {subscription.cancelAtPeriodEnd && (
+                    <div className="bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3 text-sm">
+                      <p className="text-yellow-800 dark:text-yellow-400">
+                        ⚠️ このサブスクリプションは更新日に終了します
+                      </p>
+                    </div>
                   )}
                 </>
+              )}
+
+              <div className="flex justify-between items-center">
+                <span>今月の使用回数:</span>
+                <span>
+                  {usageCount} / {stats.limit}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span>残り回数:</span>
+                <span className={`font-bold ${stats.remaining === 0 ? "text-red-600" : "text-green-600"}`}>
+                  {stats.remaining}
+                </span>
+              </div>
+
+              {/* Plan Limits */}
+              <div className="border-t pt-3 mt-3 space-y-2 text-sm text-muted-foreground">
+                <div className="flex justify-between">
+                  <span>テキスト入力制限:</span>
+                  <span>{limits.textInputMaxChars.toLocaleString()}文字まで</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>PDFサイズ制限:</span>
+                  <span>{limits.pdfMaxSizeMB}MBまで</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>月間生成回数:</span>
+                  <span>{limits.aiGenerationsPerMonth}回まで</span>
+                </div>
+              </div>
+
+              {stats.remaining === 0 && (
+                <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mt-4">
+                  <p className="text-red-600 dark:text-red-400 font-medium">
+                    今月の生成回数の上限に達しました
+                  </p>
+                  <Link
+                    href="/dashboard/billing"
+                    className="text-blue-600 dark:text-blue-400 underline text-sm mt-2 inline-block hover:text-blue-700"
+                  >
+                    プランをアップグレード →
+                  </Link>
+                </div>
+              )}
+
+              {subscription.plan === "free" && (
+                <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mt-4">
+                  <p className="text-blue-600 dark:text-blue-400 text-sm">
+                    💡 Liteプラン(¥480/月)で月100回、Proプラン(¥980/月)で月500回まで生成できます
+                  </p>
+                  <Link
+                    href="/dashboard/billing"
+                    className="text-blue-600 dark:text-blue-400 underline text-sm mt-2 inline-block hover:text-blue-700"
+                  >
+                    プランを確認 →
+                  </Link>
+                </div>
               )}
             </div>
           </CardContent>
@@ -241,13 +429,51 @@ export default function AIGenerationPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="ここにテキストを入力してください..."
-            className="w-full h-40 p-3 border rounded resize-none bg-background text-foreground dark:bg-zinc-800 dark:border-zinc-700 dark:placeholder-zinc-400"
-            disabled={isLoading}
-          />
+          <div className="relative">
+            <textarea
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="ここにテキストを入力してください..."
+              className="w-full h-40 p-3 border rounded resize-none bg-background text-foreground dark:bg-zinc-800 dark:border-zinc-700 dark:placeholder-zinc-400"
+              disabled={isLoading}
+            />
+            <div className="absolute bottom-2 right-2 text-xs text-muted-foreground bg-background/80 px-2 py-1 rounded">
+              {text.length.toLocaleString()} / {limits?.textInputMaxChars.toLocaleString() || "---"}文字
+              {limits && text.length > limits.textInputMaxChars && (
+                <span className="text-red-600 ml-2">制限を超えています</span>
+              )}
+            </div>
+          </div>
+
+          {/* Card Type Selection */}
+          <div>
+            <label className="block text-sm font-medium mb-2">カードタイプ</label>
+            <select
+              value={cardType}
+              onChange={(e) => setCardType(e.target.value as any)}
+              className="w-full p-2 border rounded bg-background text-foreground dark:bg-zinc-800 dark:border-zinc-700"
+              disabled={isLoading}
+            >
+              <option value="detailed">詳細な解説形式 (デフォルト)</option>
+              <option value="qa">一問一答形式</option>
+              <option value="true-false">正誤問題形式</option>
+            </select>
+          </div>
+
+          {/* Custom Prompt */}
+          <div>
+            <label className="block text-sm font-medium mb-2">
+              カスタムプロンプト (オプション)
+            </label>
+            <textarea
+              value={customPrompt}
+              onChange={(e) => setCustomPrompt(e.target.value)}
+              placeholder="追加の指示があれば入力してください (例: 専門用語を含めて、初心者向けに)"
+              className="w-full h-20 p-3 border rounded resize-none bg-background text-foreground dark:bg-zinc-800 dark:border-zinc-700 dark:placeholder-zinc-400"
+              disabled={isLoading}
+            />
+          </div>
+
           <div className="flex items-center gap-4">
             <label className="flex items-center gap-2">
               生成枚数:
@@ -256,14 +482,14 @@ export default function AIGenerationPage() {
                 value={textCount}
                 onChange={(e) => setTextCount(parseInt(e.target.value) || 10)}
                 min="1"
-                max="50"
+                max="400"
                 className="w-20"
                 disabled={isLoading}
               />
             </label>
             <Button
               onClick={handleGenerateFromText}
-              disabled={isLoading || !text.trim()}
+              disabled={isLoading || !text.trim() || (limits ? text.length > limits.textInputMaxChars : false)}
             >
               {isLoading ? "生成中..." : "生成"}
             </Button>
@@ -287,10 +513,48 @@ export default function AIGenerationPage() {
             disabled={isLoading}
           />
           {pdfFile && (
-            <p className="text-sm text-muted-foreground">
-              選択されたファイル: {pdfFile.name}
-            </p>
+            <div className="text-sm space-y-1">
+              <p className="text-muted-foreground">
+                選択されたファイル: {pdfFile.name}
+              </p>
+              <p className="text-muted-foreground">
+                サイズ: {(pdfFile.size / (1024 * 1024)).toFixed(2)}MB / {limits?.pdfMaxSizeMB || "---"}MB
+                {limits && pdfFile.size / (1024 * 1024) > limits.pdfMaxSizeMB && (
+                  <span className="text-red-600 ml-2">制限を超えています</span>
+                )}
+              </p>
+            </div>
           )}
+
+          {/* Card Type Selection for PDF */}
+          <div>
+            <label className="block text-sm font-medium mb-2">カードタイプ</label>
+            <select
+              value={fileCardType}
+              onChange={(e) => setFileCardType(e.target.value as any)}
+              className="w-full p-2 border rounded bg-background text-foreground dark:bg-zinc-800 dark:border-zinc-700"
+              disabled={isLoading}
+            >
+              <option value="detailed">詳細な解説形式 (デフォルト)</option>
+              <option value="qa">一問一答形式</option>
+              <option value="true-false">正誤問題形式</option>
+            </select>
+          </div>
+
+          {/* Custom Prompt for PDF */}
+          <div>
+            <label className="block text-sm font-medium mb-2">
+              カスタムプロンプト (オプション)
+            </label>
+            <textarea
+              value={fileCustomPrompt}
+              onChange={(e) => setFileCustomPrompt(e.target.value)}
+              placeholder="追加の指示があれば入力してください (例: 図表の説明を重点的に、数式を含めて)"
+              className="w-full h-20 p-3 border rounded resize-none bg-background text-foreground dark:bg-zinc-800 dark:border-zinc-700 dark:placeholder-zinc-400"
+              disabled={isLoading}
+            />
+          </div>
+
           <div className="flex items-center gap-4">
             <label className="flex items-center gap-2">
               生成枚数:
@@ -299,7 +563,7 @@ export default function AIGenerationPage() {
                 value={fileCount}
                 onChange={(e) => setFileCount(parseInt(e.target.value) || 10)}
                 min="1"
-                max="50"
+                max="400"
                 className="w-20"
                 disabled={isLoading}
               />
@@ -349,7 +613,7 @@ export default function AIGenerationPage() {
                 value={fileCount}
                 onChange={(e) => setFileCount(parseInt(e.target.value) || 10)}
                 min="1"
-                max="50"
+                max="400"
                 className="w-20"
                 disabled={isLoading}
               />

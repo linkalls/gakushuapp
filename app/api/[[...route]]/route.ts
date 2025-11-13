@@ -1,7 +1,6 @@
 import { auth } from "@/lib/auth";
 import { db, generateId, now } from "@/lib/db/drizzle";
 import * as schema from "@/lib/db/drizzle-schema";
-import { stripe } from "@/lib/stripe";
 import { generateApkg } from "@/lib/utils/apkg-export";
 import { parseApkgFile, type ImportResult } from "@/lib/utils/apkg-import";
 import { getInitialCardState, Rating, reviewCard } from "@/lib/utils/fsrs";
@@ -1759,25 +1758,53 @@ app.post("/ai/generate/text", async (c) => {
     return c.json({ error: "User not found" }, 404);
   }
 
+  // サブスクリプションを確認 - auth APIを使用
+  const subscriptionsResult = await auth.api.listActiveSubscriptions({
+    headers: c.req.raw.headers,
+    query: {
+      referenceId: userId,
+    },
+  });
+
+  let planName = "free";
+  if (subscriptionsResult && Array.isArray(subscriptionsResult)) {
+    const activeSubscription = subscriptionsResult.find(
+      (sub: any) => sub.status === "active" || sub.status === "trialing"
+    );
+    if (activeSubscription) {
+      planName = activeSubscription.plan;
+    }
+  }
+
   // Check AI usage limit
   const usageCheck = checkAIUsageLimit(
-    // user.plan,
+    planName,
     user.aiUsageCount,
     user.aiUsageResetAt
   );
 
   if (!usageCheck.allowed) {
     return c.json(
-      { error: "AI usage limit reached. Upgrade to Pro for unlimited access." },
+      {
+        error: `AI使用回数が上限に達しました。現在のプラン(${planName})では月${usageCheck.limit}回までです。`,
+        plan: planName,
+        limit: usageCheck.limit,
+        used: user.aiUsageCount,
+      },
       429
     );
   }
 
   const body = await c.req.json();
-  const { text, deckId, count = 10 } = body;
+  const { text, deckId, count = 10, customPrompt, cardType } = body;
 
   if (!text || !deckId) {
     return c.json({ error: "Missing required fields" }, 400);
+  }
+
+  // Validate count
+  if (count < 1 || count > 400) {
+    return c.json({ error: "生成枚数は1から400の間で指定してください" }, 400);
   }
 
   const generationId = generateId();
@@ -1796,7 +1823,10 @@ app.post("/ai/generate/text", async (c) => {
     });
 
     // Generate cards
-    const generatedCards = await generateCardsFromText(text, count);
+    const generatedCards = await generateCardsFromText(text, count, {
+      customPrompt,
+      cardType,
+    });
 
     // Insert cards into database
     const initialState = getInitialCardState();
@@ -1849,6 +1879,8 @@ app.post("/ai/generate/text", async (c) => {
       generationId,
       cardsGenerated: generatedCards.length,
       remaining: usageCheck.remaining,
+      limit: usageCheck.limit,
+      plan: planName,
     });
   } catch (error) {
     // Update generation record with error
@@ -1889,9 +1921,28 @@ app.post("/ai/generate/pdf", async (c) => {
     return c.json({ error: "User not found" }, 404);
   }
 
+  // サブスクリプションを確認 - auth APIを使用
+  const subscriptionsResult = await auth.api.listActiveSubscriptions({
+    headers: c.req.raw.headers,
+    query: {
+      referenceId: userId,
+    },
+  });
+
+  const planName = subscriptionsResult[0].plan || "free";
+
+  // if (subscriptionsResult && Array.isArray(subscriptionsResult)) {
+  //   const activeSubscription = subscriptionsResult.find(
+  //     (sub: any) => sub.status === "active" || sub.status === "trialing"
+  //   );
+  //   if (activeSubscription) {
+  //     planName = activeSubscription.plan;
+  //   }
+  // }
+
   // Check AI usage limit
   const usageCheck = checkAIUsageLimit(
-    // user.plan,
+    planName,
     user.aiUsageCount,
     user.aiUsageResetAt
   );
@@ -1899,7 +1950,12 @@ app.post("/ai/generate/pdf", async (c) => {
   if (!usageCheck.allowed) {
     console.log("[API-PDF] Usage limit reached");
     return c.json(
-      { error: "AI usage limit reached. Upgrade to Pro for unlimited access." },
+      {
+        error: `AI使用回数が上限に達しました。現在のプラン(${planName})では月${usageCheck.limit}回までです。`,
+        plan: planName,
+        limit: usageCheck.limit,
+        used: user.aiUsageCount,
+      },
       429
     );
   }
@@ -1909,6 +1965,8 @@ app.post("/ai/generate/pdf", async (c) => {
   const file = formData.get("file") as File;
   const deckId = formData.get("deckId") as string;
   const count = parseInt(formData.get("count") as string) || 10;
+  const customPrompt = formData.get("customPrompt") as string | null;
+  const cardType = formData.get("cardType") as string | null;
 
   console.log("[API-PDF] Form data:", {
     hasFile: !!file,
@@ -1916,11 +1974,38 @@ app.post("/ai/generate/pdf", async (c) => {
     fileSize: file?.size,
     deckId,
     count,
+    customPrompt: customPrompt ? "yes" : "no",
+    cardType: cardType || "default",
   });
 
   if (!file || !deckId) {
     console.log("[API-PDF] Missing required fields");
     return c.json({ error: "Missing required fields" }, 400);
+  }
+
+  // Validate count
+  if (count < 1 || count > 400) {
+    console.log("[API-PDF] Invalid count:", count);
+    return c.json({ error: "生成枚数は1から400の間で指定してください" }, 400);
+  }
+
+  // プランに基づいてPDFサイズをチェック
+  const fileSizeMB = file.size / (1024 * 1024);
+
+  let maxPdfSizeMB = 10; // Free plan default
+
+  console.log("[API-PDF] Plan check:", { planName, maxPdfSizeMB, fileSizeMB });
+
+  if (fileSizeMB > maxPdfSizeMB) {
+    console.log("[API-PDF] File size exceeds plan limit");
+    return c.json(
+      {
+        error: `PDFファイルサイズが制限を超えています。現在のプラン(${planName})では${maxPdfSizeMB}MBまでです。ファイルサイズ: ${fileSizeMB.toFixed(
+          2
+        )}MB`,
+      },
+      400
+    );
   }
 
   const generationId = generateId();
@@ -1941,7 +2026,10 @@ app.post("/ai/generate/pdf", async (c) => {
 
     // Generate cards
     console.log("[API-PDF] Calling generateCardsFromPDF...");
-    const generatedCards = await generateCardsFromPDF(file, count);
+    const generatedCards = await generateCardsFromPDF(file, count, {
+      customPrompt: customPrompt || undefined,
+      cardType: (cardType as any) || undefined,
+    });
     console.log("[API-PDF] Cards generated:", generatedCards.length);
 
     // Insert cards into database
@@ -2010,6 +2098,8 @@ app.post("/ai/generate/pdf", async (c) => {
       generationId,
       cardsGenerated: generatedCards.length,
       remaining: usageCheck.remaining,
+      limit: usageCheck.limit,
+      plan: planName,
     });
   } catch (error) {
     console.error("[API-PDF] Error occurred:", error);
@@ -2051,9 +2141,18 @@ app.post("/ai/generate/image", async (c) => {
     return c.json({ error: "User not found" }, 404);
   }
 
+  const subscriptionsResult = await auth.api.listActiveSubscriptions({
+    headers: c.req.raw.headers,
+    query: {
+      referenceId: userId,
+    },
+  });
+
+  const planName = subscriptionsResult[0]?.plan || "free";
+
   // Check AI usage limit
   const usageCheck = checkAIUsageLimit(
-    // user.plan,
+    planName,
     user.aiUsageCount,
     user.aiUsageResetAt
   );
@@ -2072,6 +2171,11 @@ app.post("/ai/generate/image", async (c) => {
 
   if (!file || !deckId) {
     return c.json({ error: "Missing required fields" }, 400);
+  }
+
+  // Validate count
+  if (count < 1 || count > 400) {
+    return c.json({ error: "生成枚数は1から400の間で指定してください" }, 400);
   }
 
   const generationId = generateId();
@@ -2200,18 +2304,26 @@ app.get("/ai/usage", async (c) => {
     return c.json({ error: "User not found" }, 404);
   }
 
+  const subscriptionsResult = await auth.api.listActiveSubscriptions({
+    headers: c.req.raw.headers,
+    query: {
+      referenceId: userId,
+    },
+  });
+
+  const planName = subscriptionsResult[0]?.plan || "free";
+
   const usageCheck = checkAIUsageLimit(
-    // user.plan,
+    planName,
     user.aiUsageCount,
     user.aiUsageResetAt
   );
 
   return c.json({
-    // plan: user.plan,
+    plan: planName,
     usageCount: user.aiUsageCount,
     remaining: usageCheck.remaining,
     resetAt: user.aiUsageResetAt,
-    // unlimited: user.plan === "pro",
   });
 });
 

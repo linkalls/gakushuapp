@@ -15,7 +15,7 @@ COPY package.json bun.lockb tsconfig.json next.config.ts ./
 
 # Install dependencies using Bun.
 # --frozen-lockfile ensures that the exact versions from bun.lockb are installed.
-RUN bun install --frozen-lockfile
+RUN bun install
 
 # --- Runner Stage (Final Image) ---
 # This is the final image that will be used to run the application.

@@ -16,9 +16,9 @@ const PrivacyPolicyPage: NextPage = () => {
           </div>
         </div>
       </header>
-      <main className="flex-grow">
+      <main className="grow">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <article className="prose dark:prose-invert lg:prose-xl mx-auto">
+          <article className="prose dark:prose-invert prose-lg prose-h1:text-4xl prose-h2:text-3xl mx-auto">
             <h1>Privacy Policy</h1>
             <p className="lead">
               Your privacy is important to us. It is GakushuApp's policy to
@@ -93,7 +93,11 @@ const PrivacyPolicyPage: NextPage = () => {
             <h2>Contact Us</h2>
             <p>
               If you have any questions about this Privacy Policy, please contact
-              us.
+              us at:{" "}
+              <a href="mailto:gakushukun@gmail.com">
+                gakushukun@gmail.com
+              </a>
+              .
             </p>
           </article>
         </div>

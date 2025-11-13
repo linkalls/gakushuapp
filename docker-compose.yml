@@ -1,0 +1,17 @@
+version: "3.8"
+services:
+  app:
+    build: .
+    working_dir: /app
+    volumes:
+      - ./data:/app/data   # 永続化: ホストの ./data をコンテナ内の /app/data にマウント
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=file:./data/gakushukun.db
+    restart: unless-stopped
+
+# 使い方:
+# ローカルで起動: `docker compose up --build`
+# データはリポジトリ直下の `data/` に保存されます。
