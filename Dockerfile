@@ -8,7 +8,20 @@ WORKDIR /app
 # It's a separate stage to leverage Docker's layer caching.
 # It will only be re-run if package.json or bun.lockb changes.
 FROM base AS install
-RUN apt-get update && apt-get install -y --no-install-recommends openssl
+# Install runtime + native build dependencies required to compile native modules
+# `better-sqlite3` requires node-gyp/python and build tools during installation.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+  openssl \
+  ca-certificates \
+  python3 \
+  python3-dev \
+  build-essential \
+  g++ \
+  make \
+  pkg-config \
+  libsqlite3-dev \
+  && rm -rf /var/lib/apt/lists/*
 
 # Copy files required for installation
 COPY package.json bun.lock tsconfig.json next.config.ts ./
