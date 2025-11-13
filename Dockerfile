@@ -11,7 +11,7 @@ FROM base AS install
 RUN apt-get update && apt-get install -y --no-install-recommends openssl
 
 # Copy files required for installation
-COPY package.json bun.lockb tsconfig.json next.config.ts ./
+COPY package.json bun.lock tsconfig.json next.config.ts ./
 
 # Install dependencies using Bun.
 # --frozen-lockfile ensures that the exact versions from bun.lockb are installed.
