@@ -1,10 +1,10 @@
 
-
-// (server component)
-"use client";
-
-import { useSession } from "@/lib/auth-client"; // Assuming you have a client-side auth hook
-import { useEffect, useState } from "react";
+// Server component: fetch ranking/server session directly
+import { auth } from "@/lib/auth";
+import { db } from "@/lib/db/drizzle";
+import * as schema from "@/lib/db/drizzle-schema";
+import { count, desc, eq, gte } from "drizzle-orm";
+import { headers } from "next/headers";
 
 interface RankingUser {
   userId: string;
@@ -13,32 +13,29 @@ interface RankingUser {
   reviewCount: number;
 }
 
-export default function RankingPage() {
-  const [ranking, setRanking] = useState<RankingUser[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const { data } = useSession(); // Better Auth returns data with session
-  const session = data?.session;
+export default async function RankingPage() {
+  const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const { users, reviews, cards, decks } = schema as any;
 
-  useEffect(() => {
-    fetchRanking();
-  }, []);
+  const ranking = await db
+    .select({
+      userId: users.id,
+      userName: users.name,
+      userImage: users.image,
+      reviewCount: count(reviews.id),
+    })
+    .from(reviews)
+    .innerJoin(cards, eq(reviews.cardId, cards.id))
+    .innerJoin(decks, eq(cards.deckId, decks.id))
+    .innerJoin(users, eq(decks.userId, users.id))
+    .where(gte(reviews.reviewTime, oneWeekAgo))
+    .groupBy(users.id, users.name, users.image)
+    .orderBy(desc(count(reviews.id)))
+    .limit(20)
+    .all();
 
-  const fetchRanking = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/ranking/weekly-reviews");
-      if (!res.ok) {
-        throw new Error("Failed to fetch ranking data.");
-      }
-      const data = await res.json();
-      setRanking(data);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const session = await auth.api.getSession({ headers: headers() });
+  const currentUserId = session?.user?.id ?? null;
 
   const getRankSuffix = (rank: number) => {
     if (rank === 1) return "st";
@@ -54,21 +51,7 @@ export default function RankingPage() {
     return null;
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-zinc-600 dark:text-zinc-400">ランキングを読み込み中...</div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="text-center py-12">
-        <div className="text-red-500">エラー: {error}</div>
-      </div>
-    );
-  }
+  // Server-rendered; no client loading state required
 
   return (
     <div className="space-y-8">
@@ -85,7 +68,6 @@ export default function RankingPage() {
         <ul className="divide-y divide-zinc-200 dark:divide-zinc-800">
           {ranking.map((user, index) => {
             const rank = index + 1;
-            const currentUserId = data?.user?.id ?? session?.userId;
             const isCurrentUser = currentUserId === user.userId;
 
             return (

@@ -1,7 +1,10 @@
-"use client";
-
+import { auth } from "@/lib/auth";
+import { headers } from "next/headers";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+
+import { db } from "@/lib/db/drizzle";
+import * as schema from "@/lib/db/drizzle-schema";
+import { count, eq, gte, lte } from "drizzle-orm";
 
 interface Stats {
   totalDecks: number;
@@ -10,30 +13,68 @@ interface Stats {
   reviewsToday: number;
 }
 
-export default function DashboardPage() {
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetch("/api/stats")
-      .then((res) => res.json())
-      .then((data) => {
-        setStats(data);
-        setLoading(false);
-      })
-      .catch((error) => {
-        console.error("Failed to fetch stats:", error);
-        setLoading(false);
-      });
-  }, []);
-
-  if (loading) {
+export default async function DashboardPage() {
+  const session = await auth.api.getSession({ headers: headers() });
+  if (!session) {
+    // If no session, render a simple message (AuthGuard normally protects this)
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-zinc-600 dark:text-zinc-400">読み込み中...</div>
+      <div className="text-center py-12">
+        <div className="text-zinc-600 dark:text-zinc-400">ログインしてください</div>
       </div>
     );
   }
+
+  const userId = session.user.id;
+
+  const { decks, cards, reviews } = schema as any;
+
+  const totalDecksRes = await db
+    .select({ count: count() })
+    .from(decks)
+    .where(eq(decks.userId, userId))
+    .get();
+
+  const totalDecks = Number(totalDecksRes?.count || 0);
+
+  const totalCardsRes = await db
+    .select({ count: count() })
+    .from(cards)
+    .innerJoin(decks, eq(cards.deckId, decks.id))
+    .where(eq(decks.userId, userId))
+    .get();
+
+  const totalCards = Number(totalCardsRes?.count || 0);
+
+  const now = Date.now();
+  const dueCardsRes = await db
+    .select({ count: count() })
+    .from(cards)
+    .innerJoin(decks, eq(cards.deckId, decks.id))
+    .where(eq(decks.userId, userId))
+    .where(lte(cards.due, now))
+    .get();
+
+  const dueCards = Number(dueCardsRes?.count || 0);
+
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const reviewsTodayRes = await db
+    .select({ count: count() })
+    .from(reviews)
+    .innerJoin(cards, eq(reviews.cardId, cards.id))
+    .innerJoin(decks, eq(cards.deckId, decks.id))
+    .where(eq(decks.userId, userId))
+    .where(gte(reviews.reviewTime, todayStart.getTime()))
+    .get();
+
+  const reviewsToday = Number(reviewsTodayRes?.count || 0);
+
+  const stats: Stats = {
+    totalDecks,
+    totalCards,
+    dueCards,
+    reviewsToday,
+  };
 
   return (
     <div className="space-y-8">

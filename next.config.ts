@@ -1,10 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
- webpack: (config) => {
-        config.externals.push('bun:sqlite');
-        return config;
-    },
+  /* config options here */
 };
 
 export default nextConfig;
