@@ -111,6 +111,9 @@ const PrivacyPolicyPage: NextPage = () => {
             <Link href="/privacy" className="hover:underline">
               Privacy Policy
             </Link>
+            <Link href="/tokusho" className="hover:underline">
+              特定商取引法に基づく表記
+            </Link>
           </div>
           <p className="mt-4">&copy; {new Date().getFullYear()} GakushuApp. All rights reserved.</p>
         </div>

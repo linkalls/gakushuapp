@@ -93,3 +93,10 @@ const reviews = await db
   .innerJoin(decks, eq(cards.deck_id, decks.id))
   .where(eq(decks.user_id, userId));
 ```
+
+```
+
+## 最近の更新
+
+- [x] クリーンアップ用スクリプトを作成 — 完了 (2025-11-13)
+```
