@@ -30,7 +30,11 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules"],
-      "types": ["bun-types"],  // ←これを追加！
-
+  "exclude": [
+    "node_modules",
+    "analyze_apkg.ts",
+    "analyze_cards.ts",
+    "add_better_auth_tables.ts"
+  ],
+  "types": ["bun-types"]
 }
