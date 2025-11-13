@@ -1,6 +1,10 @@
-import type { Card, Deck } from "@/lib/db/drizzle-schema";
+import type { cards, decks } from "@/lib/db/drizzle-schema";
 import { Database } from "bun:sqlite";
+import { createHash } from "crypto";
 import JSZip from "jszip";
+
+type Decks = typeof decks.$inferSelect;
+type Cards = typeof cards.$inferSelect;
 
 // This is a simplified version. A real implementation would need more
 // detailed schema and data mapping from FSRS to Anki's format.
@@ -58,6 +62,26 @@ CREATE TABLE cards (
     odid            integer not null,
     flags           integer not null,
     data            text not null
+);
+
+-- revlog table for review history
+CREATE TABLE revlog (
+    id              integer primary key,
+    cid             integer not null,
+    usn             integer not null,
+    ease            integer not null,
+    ivl             integer not null,
+    lastIvl         integer not null,
+    factor          integer not null,
+    time            integer not null,
+    type            integer not null
+);
+
+-- graves table for deleted items (cards, notes, decks)
+CREATE TABLE graves (
+    usn             integer not null,
+    oid             integer not null,
+    type            integer not null
 );
 `;
 
@@ -152,6 +176,17 @@ const defaultDconf = {
 };
 
 /**
+ * Calculates the checksum for an Anki note field.
+ * @param field The first field of the note.
+ * @returns The checksum as a number.
+ */
+function calculateChecksum(field: string): number {
+  const hash = createHash("sha1").update(field).digest("hex");
+  // Anki's checksum is the first 8 characters of the SHA1 hash, parsed as a base-10 integer.
+  return parseInt(hash.substring(0, 8), 16);
+}
+
+/**
  * Generates an .apkg file from deck and card data.
  * @param deck The main deck to export.
  * @param childDecks All descendant decks.
@@ -159,15 +194,16 @@ const defaultDconf = {
  * @returns A Buffer containing the .apkg file content.
  */
 export async function generateApkg(
-  deck: Deck,
-  childDecks: Deck[],
-  cards: Card[]
+  deck: Decks,
+  childDecks: Decks[],
+  cards: Cards[]
 ): Promise<Buffer> {
   const db = new Database(":memory:");
   db.exec(ankiSchema);
 
   const now = Date.now();
-  const creationTime = Math.floor(now / 1000);
+  const modTime = now; // Milliseconds for mod/scm
+  const creationTime = Math.floor(modTime / 1000); // Seconds for crt
 
   // --- Decks ---
   const decksToExport = [deck, ...childDecks];
@@ -175,8 +211,17 @@ export async function generateApkg(
     "1": {
       id: 1,
       name: "Default",
-      mod: creationTime,
+      mod: modTime,
       usn: 0,
+      // Fields required by Anki
+      collapsed: true,
+      dyn: 0,
+      extendNew: 10,
+      extendRev: 50,
+      newToday: [0, 0],
+      revToday: [0, 0],
+      lrnToday: [0, 0],
+      timeToday: [0, 0],
       conf: 1,
       desc: "",
     },
@@ -190,8 +235,17 @@ export async function generateApkg(
     ankiDecks[ankiId.toString()] = {
       id: ankiId,
       name: d.deckPath, // Use full path for hierarchy
-      mod: creationTime,
+      mod: modTime,
       usn: 0,
+      // Fields required by Anki
+      collapsed: true,
+      dyn: 0,
+      extendNew: 10,
+      extendRev: 50,
+      newToday: [0, 0], // [day, count]
+      revToday: [0, 0],
+      lrnToday: [0, 0],
+      timeToday: [0, 0],
       conf: 1,
       desc: d.description || "",
     };
@@ -204,8 +258,8 @@ export async function generateApkg(
   colStmt.run(
     1, // id
     creationTime, // crt
-    creationTime, // mod
-    creationTime, // scm
+    modTime, // mod
+    modTime, // scm
     11, // ver (Anki version)
     0, // dty
     0, // usn
@@ -225,37 +279,42 @@ export async function generateApkg(
     "INSERT INTO cards (id, nid, did, ord, mod, usn, type, queue, due, ivl, factor, reps, lapses, left, odue, odid, flags, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
   );
 
-  let noteIdCounter = creationTime;
+  // Use a timestamp-based counter to ensure unique IDs for notes and cards
+  let idCounter = modTime;
   for (const card of cards) {
-    const noteId = noteIdCounter++;
+    const noteId = idCounter++;
+    const cardId = idCounter++; // Ensure card ID is unique and different from note ID
     const ankiDeckId = deckIdMap.get(card.deckId) || 1;
+    const frontField = card.front;
+    const checksum = calculateChecksum(frontField);
 
     // Insert Note
     noteStmt.run(
       noteId, // id
       card.id, // guid (using gakushukun ID for uniqueness)
       1, // mid (model ID)
-      creationTime, // mod
+      modTime, // mod
       0, // usn
       "", // tags
-      `${card.front}\x1f${card.back}`, // flds (fields separated by \x1f)
-      0, // sfld
-      0, // csum (checksum)
+      `${frontField}\x1f${card.back}`, // flds (fields separated by \x1f)
+      frontField, // sfld (sort field, usually the first field)
+      checksum, // csum (checksum of the first field)
       0, // flags
       "" // data
     );
 
     // Insert Card
+    const isNew = card.state === 0;
     cardStmt.run(
-      noteId, // id (Anki uses note_id as card_id for basic cards)
+      cardId, // id
       noteId, // nid (note id)
       ankiDeckId, // did (deck id)
       0, // ord (template order)
-      creationTime, // mod
+      modTime, // mod
       0, // usn
-      card.state === 0 ? 0 : 2, // type (0=new, 1=learn, 2=review)
-      card.state === 0 ? 0 : 2, // queue
-      card.due, // due
+      isNew ? 0 : 2, // type (0=new, 1=learn, 2=review)
+      isNew ? 0 : 2, // queue
+      isNew ? cardId : card.due, // due (for new cards, use cardId; for others, use due date)
       card.scheduledDays, // ivl (interval)
       0, // factor
       card.reps, // reps
@@ -276,11 +335,14 @@ export async function generateApkg(
 
   db.close();
 
-  return zip.generateAsync({
-    type: "nodebuffer",
+  // 修正後
+  const uint8Buffer = await zip.generateAsync({
+    type: "uint8array", // ← これに変更
     compression: "DEFLATE",
     compressionOptions: {
       level: 9,
     },
   });
+
+  return Buffer.from(uint8Buffer); // uint8arrayからBufferに変換
 }
