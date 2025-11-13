@@ -11,7 +11,17 @@ WORKDIR /app
 # Install dependencies with bun
 FROM base AS deps
 COPY package.json bun.lock* ./
-RUN bun install 
+RUN apt-get update && \
+  apt-get install -y --no-install-recommends \
+  python3 \
+  python3-dev \
+  build-essential \
+  pkg-config \
+  libsqlite3-dev \
+  ca-certificates && \
+  ln -sf /usr/bin/python3 /usr/bin/python || true && \
+  rm -rf /var/lib/apt/lists/* && \
+  bun install
 
 # Rebuild the source code only when needed
 FROM base AS builder
