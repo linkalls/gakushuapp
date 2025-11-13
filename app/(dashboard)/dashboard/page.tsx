@@ -4,7 +4,7 @@ import Link from "next/link";
 
 import { db } from "@/lib/db/drizzle";
 import * as schema from "@/lib/db/drizzle-schema";
-import { count, eq, gte, lte } from "drizzle-orm";
+import { and, count, eq, gte, lte } from "drizzle-orm";
 
 interface Stats {
   totalDecks: number;
@@ -14,7 +14,9 @@ interface Stats {
 }
 
 export default async function DashboardPage() {
-  const session = await auth.api.getSession({ headers: headers() });
+  const session = await auth.api.getSession({
+    headers: await headers()
+  });
   if (!session) {
     // If no session, render a simple message (AuthGuard normally protects this)
     return (
@@ -50,8 +52,7 @@ export default async function DashboardPage() {
     .select({ count: count() })
     .from(cards)
     .innerJoin(decks, eq(cards.deckId, decks.id))
-    .where(eq(decks.userId, userId))
-    .where(lte(cards.due, now))
+    .where(and(eq(decks.userId, userId), lte(cards.due, now)))
     .get();
 
   const dueCards = Number(dueCardsRes?.count || 0);
@@ -63,8 +64,7 @@ export default async function DashboardPage() {
     .from(reviews)
     .innerJoin(cards, eq(reviews.cardId, cards.id))
     .innerJoin(decks, eq(cards.deckId, decks.id))
-    .where(eq(decks.userId, userId))
-    .where(gte(reviews.reviewTime, todayStart.getTime()))
+    .where(and(eq(decks.userId, userId), gte(reviews.reviewTime, todayStart.getTime())))
     .get();
 
   const reviewsToday = Number(reviewsTodayRes?.count || 0);

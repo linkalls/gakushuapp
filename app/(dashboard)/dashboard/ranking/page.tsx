@@ -34,7 +34,9 @@ export default async function RankingPage() {
     .limit(20)
     .all();
 
-  const session = await auth.api.getSession({ headers: headers() });
+  const session = await auth.api.getSession({
+    headers: await headers()
+  });
   const currentUserId = session?.user?.id ?? null;
 
   const getRankSuffix = (rank: number) => {
