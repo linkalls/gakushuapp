@@ -4,8 +4,7 @@ services:
     working_dir: /app
     volumes:
       - ./data:/app/data   # 永続化: ホストの ./data をコンテナ内の /app/data にマウント
-    ports:
-      - "3000:3000"
+    
     environment:
       - NODE_ENV=production
     restart: unless-stopped
