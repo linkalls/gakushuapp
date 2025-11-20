@@ -5,8 +5,12 @@ import { zodResponseFormat, zodTextFormat } from "openai/helpers/zod";
 import sharp from "sharp";
 import { z } from "zod";
 
+// Use a dummy key for build/dev if not present.
+// In production, this should be present.
+const apiKey = process.env.OPENAI_API_KEY || "dummy-key-for-build";
+
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+  apiKey: apiKey,
 });
 
 export interface GeneratedCard {
