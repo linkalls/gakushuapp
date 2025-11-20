@@ -1,102 +1,35 @@
-# Drizzle ORM 完全移行計画
+# 課金機能を「準備中」に変更するタスク（Jules担当）
 
-## 進捗状況
+## 概要
+アプリ内の既存の課金・サブスク関連UIや機能をすべて「準備中です」表示に統一し、ユーザーが誤って課金操作をしないようにする。広告表示への切り替え準備として実施。
 
-- [x] 1. Auth API (signup/login) → Drizzle ✅
-- [x] 2. Decks API (CRUD + stats) → Drizzle ✅
-- [x] 3. Cards API (CRUD + pagination) → Drizzle ✅
-- [x] 4. Reviews API (submit + FSRS) → Drizzle ✅
-- [x] 5. Stats API (analytics) → Drizzle ✅
-- [x] 6. Tags API (CRUD + associations) → Drizzle ✅
-- [x] 7. Import APKG API → Drizzle ✅
-- [ ] 8. 全エンドポイントのテスト
-- [ ] 9. 古い database.ts 削除
+## 対象箇所
+- dashboard/billing配下の各プラン選択ボタン（Lite/Pro）
+- 解約・アップグレード関連のボタンやリンク
+- サイドナビゲーション（layout.tsx）に追加されている「課金情報」のリンク
+- subscription/stripe関連API呼び出し処理
+- プラン比較テーブルや料金表示
+- その他、課金機能・課金誘導UIが実装されているすべての箇所
 
-## ✨ 完了した変換
+## 具体的な対応内容
+1. Lite/Proなど有料プランの選択・アップグレードボタンをすべて`disabled`に設定し、ラベルを「準備中」に変更
+2. Lite/Proプラン説明文を「現在準備中」「COMING SOON」に変更
+3. 課金関連ページ（dashbaord/billing/page.tsxなど）の冒頭・リンク部分に「課金機能は準備中です」メッセージ表示
+4. Stripeやsubscription系APIコール部分は`alert('準備中です')`などで暫定ブロック
+5. サイドバーやヘッダーの課金関連リンクは、削除または「準備中」表示に変更
+6. AI回数制限や機能制限の判定で有料プラン判定部分がある場合は、現状制限等を外してFree状態で全機能試せるように（要相談）
+7. 他に課金誘導・課金APIがあれば都度「準備中」化＆コメントアウト
 
-すべての API が Drizzle ORM に完全移行されました!
+## 備考
+- 課金ロジック完全削除ではなく「準備中」化が目的、後で復活も容易にする
+- ユーザーに課金誤操作をさせないこと
+- チェックリストや該当箇所追加があれば随時記載OK
 
-### 変換された API 一覧:
+## ステータス
+- [ ] dashboard/billing 完了
+- [ ] サイドナビ/ヘッダー 完了
+- [ ] subscription/stripeAPI 完了
+- [ ] その他UI 完了
 
-1. **Auth API** - Bun.password + Drizzle
-2. **Decks API** - 階層構造、統計計算
-3. **Cards API** - CRUD、ページネーション、due cards
-4. **Reviews API** - FSRS 統合、レビュー記録
-5. **Stats API** - 詳細な統計データ
-6. **Tags API** - タグ管理
-7. **Import APKG API** - Anki 形式インポート
-8. **Card-Tags API** - カードとタグの関連付け
-
-### 使用した Drizzle 機能:
-
-- ✅ `select()`, `insert()`, `update()`, `delete()`
-- ✅ `where()`, `eq()`, `and()`, `or()`, `like()`, `inArray()`
-- ✅ `gte()`, `lte()`, `sql()`
-- ✅ `innerJoin()` - 複数テーブル結合
-- ✅ `count()`, `sum()` - 集計関数
-- ✅ `orderBy()`, `desc()` - ソート
-- ✅ `limit()`, `offset()` - ページネーション
-- ✅ `groupBy()` - グループ化
-
-## 実装パターン
-
-### SELECT
-
-```typescript
-const user = await db.select().from(users).where(eq(users.email, email)).get();
-```
-
-### INSERT
-
-```typescript
-await db.insert(decks).values({
-  id: generateId(),
-  user_id: userId,
-  name: body.name,
-  created_at: now(),
-  updated_at: now(),
-});
-```
-
-### UPDATE
-
-```typescript
-await db
-  .update(decks)
-  .set({ name: body.name, updated_at: now() })
-  .where(eq(decks.id, id));
-```
-
-### DELETE
-
-```typescript
-await db.delete(decks).where(eq(decks.id, id));
-```
-
-### COUNT
-
-```typescript
-const result = await db
-  .select({ count: count() })
-  .from(cards)
-  .where(eq(cards.deck_id, deckId))
-  .get();
-```
-
-### JOIN
-
-```typescript
-const reviews = await db
-  .select()
-  .from(reviews)
-  .innerJoin(cards, eq(reviews.card_id, cards.id))
-  .innerJoin(decks, eq(cards.deck_id, decks.id))
-  .where(eq(decks.user_id, userId));
-```
-
-```
-
-## 最近の更新
-
-- [x] クリーンアップ用スクリプトを作成 — 完了 (2025-11-13)
-```
+担当: Jules
+期限: ASAP
