@@ -373,26 +373,24 @@ export default function AIGenerationPage() {
                   <p className="text-red-600 dark:text-red-400 font-medium">
                     今月の生成回数の上限に達しました
                   </p>
-                  <Link
-                    href="/dashboard/billing"
-                    className="text-blue-600 dark:text-blue-400 underline text-sm mt-2 inline-block hover:text-blue-700"
+                  <span
+                    className="text-gray-500 dark:text-gray-400 text-sm mt-2 inline-block cursor-not-allowed"
                   >
-                    プランをアップグレード →
-                  </Link>
+                    プランをアップグレード (準備中) →
+                  </span>
                 </div>
               )}
 
               {subscription.plan === "free" && (
                 <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mt-4">
                   <p className="text-blue-600 dark:text-blue-400 text-sm">
-                    💡 Liteプラン(¥480/月)で月100回、Proプラン(¥980/月)で月500回まで生成できます
+                    💡 Liteプラン(¥480/月)で月100回、Proプラン(¥980/月)で月500回まで生成できます (準備中)
                   </p>
-                  <Link
-                    href="/dashboard/billing"
-                    className="text-blue-600 dark:text-blue-400 underline text-sm mt-2 inline-block hover:text-blue-700"
+                  <span
+                    className="text-gray-500 dark:text-gray-400 text-sm mt-2 inline-block cursor-not-allowed"
                   >
-                    プランを確認 →
-                  </Link>
+                    プランを確認 (準備中) →
+                  </span>
                 </div>
               )}
             </div>

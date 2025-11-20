@@ -8,7 +8,12 @@ import { anonymous } from "better-auth/plugins";
 import { eq } from "drizzle-orm";
 import Stripe from "stripe";
 
-const stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+// Use a dummy key for build/dev if not present.
+// In production, this should be present.
+const stripeKey = process.env.STRIPE_SECRET_KEY || "sk_test_dummy";
+const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET || "whsec_dummy";
+
+const stripeClient = new Stripe(stripeKey, {
   apiVersion: "2025-10-29.clover", // Latest API version as of Stripe SDK v19
 });
 
@@ -44,7 +49,7 @@ export const auth = betterAuth({
     nextCookies(),
     stripe({
       stripeClient,
-      stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET!,
+      stripeWebhookSecret: stripeWebhookSecret,
       createCustomerOnSignUp: true,
       subscription: {
         enabled: true,

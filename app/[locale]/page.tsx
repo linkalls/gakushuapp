@@ -1,6 +1,7 @@
 "use client";
 
 import { signIn } from "@/lib/auth-client";
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -9,6 +10,7 @@ export default function Home() {
   const router = useRouter();
   const [isDemoLoading, setIsDemoLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const t = useTranslations("HomePage");
 
   const handleDemoLogin = async () => {
     setIsDemoLoading(true);
@@ -35,13 +37,15 @@ export default function Home() {
       <main className="flex flex-col items-center justify-center gap-8 px-4 py-16">
         <div className="flex flex-col items-center gap-4 text-center">
           <h1 className="text-6xl font-bold bg-linear-to-r from-zinc-900 to-zinc-600 dark:from-zinc-100 dark:to-zinc-400 bg-clip-text text-transparent">
-            gakushukun
+             Gakushukun
           </h1>
           <p className="text-xl text-zinc-600 dark:text-zinc-400 max-w-md">
-            モダンで美しい間隔反復学習アプリ
+            {/* Modern and beautiful spaced repetition app */}
+             モダンで美しい間隔反復学習アプリ
           </p>
           <p className="text-sm text-zinc-500 dark:text-zinc-500 max-w-lg">
-            科学的なFSRSアルゴリズムを使用した、Ankiの代替となる学習体験
+            {/* Scientific FSRS algorithm, alternative to Anki */}
+             科学的なFSRSアルゴリズムを使用した、Ankiの代替となる学習体験
           </p>
         </div>
 
@@ -57,7 +61,7 @@ export default function Home() {
             href="/signup"
             className="flex h-12 items-center justify-center rounded-full bg-zinc-900 dark:bg-zinc-100 px-8 text-zinc-50 dark:text-zinc-900 font-medium transition-all hover:scale-105 hover:shadow-lg"
           >
-            無料で学習を開始
+             無料で学習を開始
           </Link>
           <button
             onClick={handleDemoLogin}

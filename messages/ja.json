@@ -1,0 +1,22 @@
+{
+  "HomePage": {
+    "title": "こんにちは！"
+  },
+  "Sidebar": {
+    "dashboard": "ダッシュボード",
+    "decks": "デッキ",
+    "aiGeneration": "AI生成",
+    "ranking": "ランキング",
+    "tags": "タグ",
+    "search": "検索",
+    "stats": "統計",
+    "import": "インポート",
+    "billing": "課金情報",
+    "profile": "プロフィール",
+    "logout": "ログアウト"
+  },
+  "Common": {
+    "underConstruction": "準備中",
+    "comingSoon": "近日公開"
+  }
+}

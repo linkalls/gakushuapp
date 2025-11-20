@@ -98,7 +98,7 @@ export default function DashboardLayout({
                       プロフィール
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => router.push('/dashboard/billing')}>
-                      課金情報
+                      課金情報 (準備中)
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={handleLogout} className="text-red-500 focus:text-red-500">

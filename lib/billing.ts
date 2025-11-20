@@ -39,8 +39,17 @@ export const PLAN_PRICES = {
 
 /**
  * Get the current user's subscription plan
+ * TEMPORARY: Always returns "free" to disable paid plans.
  */
 export async function getCurrentPlan(): Promise<SubscriptionPlan> {
+  return "free";
+}
+
+/**
+ * Get the current user's subscription plan (Legacy)
+ * Original logic preserved for future use.
+ */
+export async function _getCurrentPlan(): Promise<SubscriptionPlan> {
   try {
     const { data: subscriptions } = await authClient.subscription.list({});
 
@@ -92,11 +101,19 @@ export async function upgradeToPlan(
     cancelUrl: string;
   }
 ) {
+  console.warn("Billing is currently under construction. Upgrade blocked.");
+  return {
+    data: null,
+    error: { message: "現在、プランのアップグレードは準備中です。" }
+  };
+  /*
+  // Original logic
   return authClient.subscription.upgrade({
     plan,
     successUrl: options.successUrl,
     cancelUrl: options.cancelUrl,
   });
+  */
 }
 
 /**
@@ -116,26 +133,50 @@ export async function cancelSubscription(options: {
   subscriptionId: string;
   returnUrl: string;
 }) {
+  console.warn("Billing is currently under construction. Cancel blocked.");
+   return {
+    data: null,
+    error: { message: "現在、プランの変更は準備中です。" }
+  };
+  /*
+  // Original logic
   return authClient.subscription.cancel({
     subscriptionId: options.subscriptionId,
     returnUrl: options.returnUrl,
   });
+  */
 }
 
 /**
  * Restore a canceled subscription
  */
 export async function restoreSubscription(subscriptionId: string) {
+  console.warn("Billing is currently under construction. Restore blocked.");
+  return {
+    data: null,
+    error: { message: "現在、プランの変更は準備中です。" }
+  };
+  /*
+  // Original logic
   return authClient.subscription.restore({
     subscriptionId,
   });
+  */
 }
 
 /**
  * Open billing portal
  */
 export async function openBillingPortal(returnUrl: string) {
+  console.warn("Billing is currently under construction. Portal blocked.");
+  return {
+    data: null,
+    error: { message: "現在、課金ポータルは準備中です。" }
+  };
+  /*
+  // Original logic
   return authClient.subscription.billingPortal({
     returnUrl,
   });
+  */
 }

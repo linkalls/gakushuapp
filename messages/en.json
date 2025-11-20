@@ -1,0 +1,22 @@
+{
+  "HomePage": {
+    "title": "Hello world!"
+  },
+  "Sidebar": {
+    "dashboard": "Dashboard",
+    "decks": "Decks",
+    "aiGeneration": "AI Generation",
+    "ranking": "Ranking",
+    "tags": "Tags",
+    "search": "Search",
+    "stats": "Statistics",
+    "import": "Import",
+    "billing": "Billing",
+    "profile": "Profile",
+    "logout": "Logout"
+  },
+  "Common": {
+    "underConstruction": "Under Construction",
+    "comingSoon": "Coming Soon"
+  }
+}
